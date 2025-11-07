@@ -1,0 +1,364 @@
+# =====================================================
+# إعدادات مساعد واتساب العائلي الذكي
+# WhatsApp Family AI Assistant Configuration
+# =====================================================
+
+# الإعدادات العامة للتطبيق
+app:
+  timezone: "Africa/Cairo"
+  language_default: "ar"
+  quiet_hours:
+    start: "22:00"
+    end: "06:30"
+  rate_limits:
+    max_msgs_per_day_per_family: 5
+    min_gap_minutes: 60
+  hot_reload: true
+
+# إعدادات الذكاء الاصطناعي
+ai:
+  # LLM Configuration
+  llm:
+    provider: "openai"
+    model: "gpt-4o-mini"
+    temperature: 0.6
+    max_tokens: 600
+    system_prompt: |
+      أنت مساعد عائلي ذكي وحنون. دورك مساعدة الوالدين في تربية أطفالهم بطريقة صحية ومتوازنة.
+      - استخدم لغة بسيطة وواضحة ومختصرة
+      - كن عملياً وواقعياً في النصائح
+      - اظهر التعاطف والدعم
+      - لا تعطي نصائح طبية تشخيصية، بل وجّه للطبيب عند الحاجة
+      - احترم القيم العائلية والدينية بلطف
+
+  # RAG Configuration
+  rag:
+    enabled: true
+    vector_db: "chroma"
+    top_k: 4
+    similarity_threshold: 0.7
+    collection_name: "family_knowledge"
+
+  # ML Models Configuration
+  ml:
+    send_time_optimizer: "thompson"  # thompson, epsilon_greedy, random
+    content_affinity_model: "logreg"  # logreg, simple_count
+    exploration_rate: 0.2
+    min_samples_for_learning: 10
+
+  # Safety Guardrails
+  safety:
+    medical_guardrails: true
+    religion_tone: "gentle"  # gentle, moderate, strong, none
+    content_moderation: true
+    max_retries_on_unsafe: 2
+
+# المسارات والمحتوى
+tracks:
+  # المسارات اليومية الأساسية
+  daily:
+    - child_sleep
+    - child_nutrition
+    - child_play
+    - child_language
+    - parents_mental
+    - parents_learning
+
+  # المسارات الاختيارية
+  optional:
+    - family_values
+    - prayer_times
+    - weekend_planner
+
+  # كثافة الرسائل حسب وقت اليوم
+  density:
+    morning: 1    # عدد الرسائل في الصباح (06:30-12:00)
+    noon: 1       # عدد الرسائل في الظهيرة (12:00-17:00)
+    evening: 1    # عدد الرسائل في المساء (17:00-22:00)
+
+  # أشكال المحتوى المدعومة
+  formats:
+    - text
+    - audio30
+    - checklist
+    - quick_tip
+
+# مسار تعلم الوالدين
+parents_learning:
+  enabled: true
+  cadence_days: 3  # كل 3 أيام
+  deliver:
+    morning_to: "father"
+    evening_to: "mother"
+  duration_minutes: 2-3
+
+  # مصادر التعلم
+  sources:
+    - type: "books_local"
+      tags: ["تربية", "تنظيم وقت", "ضغط نفسي", "تواصل زوجي"]
+    - type: "courses_online"
+      tags: ["تواصل زوجي", "إدارة مالية", "تطوير الذات"]
+    - type: "articles"
+      tags: ["نصائح سريعة", "مهارات حياتية"]
+
+  # خيارات التفاعل
+  interaction_buttons:
+    - "نص سريع"
+    - "صوت 30ث"
+    - "احفظ للويكند"
+
+# تخطيط نهاية الأسبوع
+weekend:
+  enabled: true
+  send:
+    day: "Thu"  # الخميس
+    time: "18:30"
+
+  # ترشيحات الأفلام
+  movies:
+    enabled: true
+    count: 2
+    age_rating_max: "PG"
+    language_pref: "ar_en_dubbed"  # ar, en, ar_en_dubbed
+    sources:
+      - "netflix"
+      - "disney_plus"
+      - "local_recommendations"
+
+  # اقتراحات الخروجات
+  outings:
+    enabled: true
+    budget: "low"  # low, medium, high
+    duration_hours: 2
+    categories:
+      - "حديقة"
+      - "تمشية"
+      - "متحف بسيط"
+      - "نادي أطفال"
+      - "مكتبة"
+      - "كافيه عائلي"
+
+  # Checklist التجهيز
+  checklist:
+    enabled: true
+    items:
+      - "حقيبة الطفل"
+      - "وجبات خفيفة"
+      - "مياه"
+      - "مناديل"
+      - "ألعاب صغيرة"
+      - "إسعافات أولية"
+
+  # بديل منزلي
+  home_alternative:
+    enabled: true
+    send_time: "Fri 09:00"
+    ideas:
+      - "نشاطات منزلية"
+      - "العاب عائلية"
+      - "طبخ مشترك"
+      - "قراءة قصص"
+
+# التذكيرات الذكية
+reminders:
+  # تذكيرات التطعيمات
+  vaccines:
+    enabled: true
+    advance_days: 3  # تذكير قبل 3 أيام
+    repeat_hours: 24  # إعادة التذكير كل 24 ساعة
+
+  # تذكيرات الكشف الطبي
+  doctor_checkups:
+    enabled: true
+    advance_days: 2
+
+  # تذكيرات الأدوية
+  medications:
+    enabled: true
+    custom_times: true
+
+  # أوقات الصلاة
+  prayer_times:
+    enabled: true
+    city: "Cairo"
+    prayers:
+      - "الفجر"
+      - "الظهر"
+      - "العصر"
+      - "المغرب"
+      - "العشاء"
+    reminder_minutes_before: 10
+    tone: "gentle"
+
+# واجهة المستخدم والتفاعل
+ui:
+  # الأزرار الرئيسية
+  buttons:
+    - "تم ✅"
+    - "ذكّرني لاحقاً ⏰"
+    - "بدّل التوقيت 🔄"
+    - "أرسل صوت 30ث 🎤"
+    - "تخطي ⏭️"
+
+  # أزرار التتبع السريع
+  quick_track_buttons:
+    sleep:
+      - "نام جيداً 😴"
+      - "نوم متقطع 😐"
+      - "لم ينم 😔"
+
+    nutrition:
+      - "أكل جيداً 🍽️"
+      - "أكل قليل 🥄"
+      - "رفض الأكل ❌"
+
+    mood:
+      - "مزاج ممتاز 😊"
+      - "مزاج عادي 😐"
+      - "منزعج 😢"
+
+  # تبديل اللغة
+  language_switch: true
+
+  # الرموز التعبيرية
+  emoji_level: "moderate"  # none, minimal, moderate, high
+
+# يوميات الطفل
+child_daily:
+  # النوم
+  sleep:
+    enabled: true
+    reminders:
+      - time: "20:00"
+        message_type: "bedtime_routine"
+      - time: "20:30"
+        message_type: "calming_activity"
+    track_quality: true
+
+  # التغذية
+  nutrition:
+    enabled: true
+    meal_suggestions: true
+    new_foods:
+      enabled: true
+      frequency_days: 3
+    allergies_check: true
+
+  # اللعب والنشاط
+  play:
+    enabled: true
+    duration_minutes: 5-10
+    types:
+      - "حركي"
+      - "إبداعي"
+      - "تعليمي"
+      - "اجتماعي"
+
+  # تطوير اللغة
+  language:
+    enabled: true
+    activities:
+      - "أسئلة"
+      - "قصص قصيرة"
+      - "ألعاب لفظية"
+      - "أغاني"
+    target_words_per_week: 5
+
+# صحة ونفسية الأسرة
+family_health:
+  # صحة نفسية للوالدين
+  parents_mental:
+    enabled: true
+    breathing_exercises: true
+    positive_reframing: true
+    daily_wins: true
+
+  # تواصل زوجي
+  couple_communication:
+    enabled: true
+    daily_question: true
+    weekly_date_reminder: true
+    date_time: "Sat 20:00"
+
+# الخصوصية والأمان
+privacy:
+  # الاحتفاظ بالبيانات
+  data_retention_days: 365
+
+  # التشفير
+  encryption:
+    enabled: true
+    fields:
+      - "phone_numbers"
+      - "child_health_info"
+      - "allergies"
+
+  # أوامر الخصوصية
+  commands:
+    export_data: "بياناتي"
+    forget_me: "انساني"
+    privacy_info: "خصوصيتي"
+
+  # المشاركة
+  data_sharing: false
+  analytics: false
+
+# التقارير والإحصائيات
+reports:
+  # تقرير أسبوعي
+  weekly:
+    enabled: true
+    send_day: "Fri"
+    send_time: "09:00"
+    sections:
+      - "ملخص الأسبوع"
+      - "إنجازات"
+      - "نقاط للتحسين"
+      - "هدف الأسبوع القادم"
+
+  # تقرير شهري
+  monthly:
+    enabled: false
+    send_day: 1
+    send_time: "10:00"
+
+# الإشعارات
+notifications:
+  # أنواع الإشعارات
+  types:
+    reminders: true
+    daily_messages: true
+    weekly_reports: true
+    urgent_only: false
+
+  # توقيت الإشعارات
+  smart_timing:
+    enabled: true
+    learn_from_interactions: true
+    avoid_busy_times: true
+
+# الأخطاء والسجلات
+logging:
+  level: "info"  # debug, info, warn, error
+  file: "./logs/app.log"
+  max_size: "10MB"
+  max_files: 5
+
+# إعدادات متقدمة
+advanced:
+  # A/B Testing
+  ab_testing:
+    enabled: false
+    variants: 2
+    auto_select_winner: true
+    min_samples: 20
+
+  # التخزين المؤقت
+  cache:
+    enabled: false
+    ttl_minutes: 60
+
+  # معدل الطلبات
+  rate_limiting:
+    enabled: true
+    requests_per_minute: 10

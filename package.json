@@ -1,0 +1,41 @@
+{
+  "name": "whatsapp-family-ai-assistant",
+  "version": "1.0.0",
+  "description": "مساعد واتساب ذكي خاص بالعائلة - AI-powered family WhatsApp assistant",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "db:init": "node src/database/init.js",
+    "db:migrate": "node src/database/migrate.js"
+  },
+  "keywords": [
+    "whatsapp",
+    "ai",
+    "family",
+    "assistant",
+    "parenting",
+    "child-care"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "whatsapp-web.js": "^1.23.0",
+    "qrcode-terminal": "^0.12.0",
+    "better-sqlite3": "^9.2.2",
+    "node-cron": "^3.0.3",
+    "yaml": "^2.3.4",
+    "dotenv": "^16.3.1",
+    "openai": "^4.20.1",
+    "chromadb": "^1.7.3",
+    "date-fns": "^3.0.6",
+    "date-fns-tz": "^2.0.0",
+    "crypto-js": "^4.2.0",
+    "chokidar": "^3.5.3"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
