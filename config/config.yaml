@@ -15,6 +15,26 @@ app:
     min_gap_minutes: 60
   hot_reload: true
 
+# إعدادات الجروبات العائلية
+groups:
+  enabled: true
+  send_to_group_by_default: true  # إرسال للجروب بشكل افتراضي
+  fallback_to_individual: true    # الرجوع للإرسال الفردي إذا فشل الجروب
+
+# إعدادات الطقس
+weather:
+  enabled: true
+  provider: "openweather"  # openweather or estimation
+  update_interval_minutes: 30
+  include_in_messages: true
+  show_for_activities:
+    - child_play
+    - weekend_outings
+  cities:
+    Cairo: "القاهرة"
+    Riyadh: "الرياض"
+    Dubai: "دبي"
+
 # إعدادات الذكاء الاصطناعي
 ai:
   # LLM Configuration

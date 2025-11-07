@@ -5,6 +5,7 @@
 
 import { FamilyModel, GuardianModel, ChildModel, ScheduledMessageModel } from '../database/models.js';
 import { LLMService } from '../ai/llm.js';
+import { WeatherService } from './weatherService.js';
 import { format, addHours } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 
@@ -13,6 +14,7 @@ export class MessageEngine {
     this.bot = bot;
     this.config = config;
     this.llm = new LLMService(config);
+    this.weatherService = new WeatherService(config);
   }
 
   /**
@@ -53,17 +55,31 @@ export class MessageEngine {
       'parents_mental'
     ];
 
-    for (const guardian of guardians) {
-      // Get guardian's preferred times
-      const timeSlots = this.getTimeSlots(guardian, family.timezone);
-
-      // Distribute tracks across time slots
+    // Check if should send to group
+    if (family.send_to_group && family.family_group_id) {
+      // Send to family group instead of individuals
+      const timeSlots = this.getDefaultTimeSlots();
       const tracksPerSlot = this.distributeTracksToTimeSlots(tracks, timeSlots);
 
-      // Generate and schedule messages
       for (const [time, slotTracks] of Object.entries(tracksPerSlot)) {
         for (const track of slotTracks) {
-          await this.scheduleMessage(guardian, children[0], track, time, family.timezone);
+          await this.scheduleGroupMessage(family, children[0], track, time, family.timezone);
+        }
+      }
+    } else {
+      // Send to guardians individually
+      for (const guardian of guardians) {
+        // Get guardian's preferred times
+        const timeSlots = this.getTimeSlots(guardian, family.timezone);
+
+        // Distribute tracks across time slots
+        const tracksPerSlot = this.distributeTracksToTimeSlots(tracks, timeSlots);
+
+        // Generate and schedule messages
+        for (const [time, slotTracks] of Object.entries(tracksPerSlot)) {
+          for (const track of slotTracks) {
+            await this.scheduleMessage(guardian, children[0], track, time, family.timezone);
+          }
         }
       }
     }
@@ -187,18 +203,33 @@ export class MessageEngine {
         const guardian = GuardianModel.getById(message.guardian_id);
         if (!guardian) continue;
 
+        const family = FamilyModel.getById(guardian.family_id);
+        if (!family) continue;
+
         // Send message with buttons
         const buttons = message.buttons ? JSON.parse(message.buttons) : [];
-        await this.bot.sendMessageWithButtons(
-          guardian.phone_number,
-          message.message_content,
-          buttons
-        );
+
+        // Check if should send to group or individual
+        if (family.send_to_group && family.family_group_id) {
+          // Send to family group
+          await this.bot.sendMessageWithButtons(
+            family.family_group_id,
+            message.message_content,
+            buttons
+          );
+          console.log(`✅ Sent ${message.message_type} to group ${family.family_name}`);
+        } else {
+          // Send to individual guardian
+          await this.bot.sendMessageWithButtons(
+            guardian.phone_number,
+            message.message_content,
+            buttons
+          );
+          console.log(`✅ Sent ${message.message_type} to ${guardian.name}`);
+        }
 
         // Mark as sent
         ScheduledMessageModel.markAsSent(message.id);
-
-        console.log(`✅ Sent ${message.message_type} to ${guardian.name}`);
 
         // Wait a bit to avoid rate limiting
         await this.sleep(1000);
@@ -301,6 +332,109 @@ export class MessageEngine {
     );
 
     console.log(`✅ Sent instant ${messageType} to ${guardian.name}`);
+  }
+
+  /**
+   * Get default time slots
+   */
+  getDefaultTimeSlots() {
+    return {
+      morning: '07:30',
+      noon: '13:30',
+      evening: '19:00'
+    };
+  }
+
+  /**
+   * Schedule a message for family group
+   */
+  async scheduleGroupMessage(family, child, messageType, time, timezone) {
+    const childAge = this.calculateAge(child.birth_date);
+    const timeOfDay = this.getTimeOfDay(time);
+
+    // Get weather info
+    const cityName = this.getCityFromTimezone(timezone);
+    const weather = await this.weatherService.getWeather(cityName);
+
+    // Add weather context for outdoor activities
+    let weatherContext = null;
+    if (messageType === 'child_play') {
+      const activity = this.weatherService.getActivitySuggestion(weather);
+      weatherContext = `الطقس: ${weather.temp}°م - ${activity.suggestion}`;
+    }
+
+    // Generate message using LLM
+    const context = {
+      messageType,
+      guardianName: family.family_name,
+      childName: child.name,
+      childAge,
+      timeOfDay,
+      additionalContext: weatherContext
+    };
+
+    let messageContent = await this.llm.generateMessage(context);
+
+    // Add weather info if relevant
+    if (messageType === 'child_play' && weatherContext) {
+      messageContent = `${weather.icon} ${messageContent}\n\n${weatherContext}`;
+    }
+
+    // Get buttons from config
+    const buttons = this.config.ui?.buttons || [
+      'تم ✅',
+      'ذكّرني لاحقاً ⏰',
+      'بدّل التوقيت 🔄',
+      'تخطي ⏭️'
+    ];
+
+    // Calculate scheduled time (today at specified time)
+    const now = new Date();
+    const [hours, minutes] = time.split(':');
+    const scheduledTime = new Date(now);
+    scheduledTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+
+    // If time has passed today, schedule for tomorrow
+    if (scheduledTime < now) {
+      scheduledTime.setDate(scheduledTime.getDate() + 1);
+    }
+
+    // Check quiet hours
+    if (this.isQuietHour(scheduledTime)) {
+      console.log(`Skipping group message for ${family.family_name} - quiet hours`);
+      return;
+    }
+
+    // Save to database (using first guardian as reference)
+    const guardians = GuardianModel.getByFamily(family.id);
+    if (guardians.length > 0) {
+      ScheduledMessageModel.create(
+        family.id,
+        guardians[0].id, // Reference guardian
+        messageType,
+        messageContent,
+        format(scheduledTime, 'yyyy-MM-dd HH:mm:ss'),
+        buttons
+      );
+
+      console.log(`✅ Scheduled ${messageType} for group ${family.family_name} at ${time}`);
+    }
+  }
+
+  /**
+   * Get city name from timezone
+   */
+  getCityFromTimezone(timezone) {
+    const cityMap = {
+      'Africa/Cairo': 'Cairo',
+      'Asia/Riyadh': 'Riyadh',
+      'Asia/Dubai': 'Dubai',
+      'Asia/Kuwait': 'Kuwait',
+      'Asia/Beirut': 'Beirut',
+      'Africa/Casablanca': 'Casablanca'
+    };
+
+    return cityMap[timezone] || 'Cairo';
   }
 }
 

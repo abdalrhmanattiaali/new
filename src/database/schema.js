@@ -11,6 +11,8 @@ export const schema = {
       family_name TEXT NOT NULL,
       timezone TEXT DEFAULT 'Africa/Cairo',
       language TEXT DEFAULT 'ar',
+      family_group_id TEXT, -- WhatsApp Group ID (e.g., 201234567890-1234567890@g.us)
+      send_to_group INTEGER DEFAULT 1, -- 1 = send to group, 0 = send individually
       onboarding_completed INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
