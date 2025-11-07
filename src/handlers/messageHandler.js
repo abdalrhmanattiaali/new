@@ -5,12 +5,14 @@
 
 import { GuardianModel, InteractionModel } from '../database/models.js';
 import { OnboardingService } from '../services/onboarding.js';
+import { GroupOnboardingService } from '../services/groupOnboardingService.js';
 
 export class MessageHandler {
   constructor(bot, config) {
     this.bot = bot;
     this.config = config;
     this.onboardingService = new OnboardingService(bot, config);
+    this.groupOnboarding = new GroupOnboardingService(bot, config);
     this.userSessions = new Map(); // Track user onboarding sessions
   }
 
@@ -20,7 +22,15 @@ export class MessageHandler {
   async handle(message) {
     const from = message.from;
     const body = message.body.trim();
+    const chat = await message.getChat();
 
+    // Check if message is from a group
+    if (chat.isGroup) {
+      await this.handleGroupMessage(message, chat);
+      return;
+    }
+
+    // Individual message handling
     // Get guardian from database
     const guardian = GuardianModel.getByPhoneNumber(from);
 
@@ -44,6 +54,145 @@ export class MessageHandler {
 
     // Handle general conversation
     await this.handleGeneralMessage(message, guardian);
+  }
+
+  /**
+   * Handle messages from groups
+   */
+  async handleGroupMessage(message, chat) {
+    const groupId = chat.id._serialized;
+    const body = message.body.trim();
+
+    // Check if group is already registered
+    const isRegistered = await this.groupOnboarding.checkGroupOnboarding(groupId);
+
+    // Check if group is in onboarding process
+    const session = this.groupOnboarding.getSession(groupId);
+
+    if (session) {
+      // Group is in onboarding - process the message
+      await this.groupOnboarding.processOnboardingMessage(groupId, message, chat);
+      return;
+    }
+
+    if (!isRegistered) {
+      // Group is not registered - check for start command
+      if (body === '/start' || body === 'ابدأ' || body === 'تسجيل' || body.includes('بدء التسجيل')) {
+        await this.groupOnboarding.startGroupOnboarding(groupId, chat);
+        return;
+      }
+
+      // Send instruction to start onboarding
+      if (body.startsWith('/') || body.includes('مرحبا') || body.includes('السلام')) {
+        const instructionMsg = `
+👋 مرحباً بكم في المساعد العائلي الذكي!
+
+هذا الجروب غير مسجل بعد.
+
+للبدء في التسجيل، اكتب:
+• /start
+• ابدأ
+• تسجيل
+
+سأقوم بإرشادكم خطوة بخطوة لتسجيل عائلتكم! 🎉
+        `.trim();
+
+        await chat.sendMessage(instructionMsg);
+      }
+      return;
+    }
+
+    // Group is registered - handle normal commands
+    // Handle group commands
+    if (body === '/help' || body === 'مساعدة') {
+      await this.handleGroupHelp(chat);
+      return;
+    }
+
+    if (body === '/status' || body === 'الحالة') {
+      await this.handleGroupStatus(chat, groupId);
+      return;
+    }
+
+    // Ignore other messages in registered groups (unless they're commands)
+  }
+
+  /**
+   * Show help for group
+   */
+  async handleGroupHelp(chat) {
+    const helpMessage = `
+🤖 *مساعد العائلة الذكي - أوامر الجروب*
+
+*الأوامر المتاحة:*
+- مساعدة أو /help: عرض هذه الرسالة
+- الحالة أو /status: عرض حالة العائلة
+- /settings: إعدادات الجروب
+
+*ماذا أفعل؟*
+✨ أرسل لكم رسائل يومية متنوعة
+📅 أذكركم بالتطعيمات والأحداث
+💡 أقدم نصائح تربوية ذكية
+🎯 أتابع تطور الطفل وأهدافكم
+🎂 أذكركم بأعياد الميلاد والمناسبات
+
+تفاعلوا مع الرسائل باستخدام الأزرار! 👍
+    `.trim();
+
+    await chat.sendMessage(helpMessage);
+  }
+
+  /**
+   * Show status for group
+   */
+  async handleGroupStatus(chat, groupId) {
+    try {
+      const Database = (await import('better-sqlite3')).default;
+      const { fileURLToPath } = await import('url');
+      const { dirname, join } = await import('path');
+
+      const __filename = fileURLToPath(import.meta.url);
+      const __dirname = dirname(__filename);
+      const dbPath = join(__dirname, '..', '..', 'data', 'family_assistant.db');
+
+      const db = new Database(dbPath);
+
+      const family = db.prepare(`
+        SELECT f.*, COUNT(DISTINCT c.id) as children_count
+        FROM families f
+        LEFT JOIN children c ON c.family_id = f.id
+        WHERE f.family_group_id = ?
+        GROUP BY f.id
+      `).get(groupId);
+
+      const guardians = db.prepare(`
+        SELECT name, role FROM guardians WHERE family_id = ?
+      `).all(family.id);
+
+      db.close();
+
+      const statusMessage = `
+📊 *حالة العائلة*
+
+👨‍👩‍👧 العائلة: ${family.family_name}
+📅 تاريخ التسجيل: ${new Date(family.created_at).toLocaleDateString('ar-EG')}
+
+👥 *الأعضاء:*
+${guardians.map(g => `${g.role === 'father' ? '👨' : '👩'} ${g.name} (${g.role === 'father' ? 'الأب' : 'الأم'})`).join('\n')}
+
+👶 عدد الأطفال: ${family.children_count}
+${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marriage_date).toLocaleDateString('ar-EG')}` : ''}
+
+✅ الإرسال للجروب: ${family.send_to_group ? 'مفعّل' : 'معطّل'}
+✅ كل شيء يعمل بشكل جيد!
+      `.trim();
+
+      await chat.sendMessage(statusMessage);
+
+    } catch (error) {
+      console.error('Error getting group status:', error);
+      await chat.sendMessage('❌ حدث خطأ في جلب البيانات.');
+    }
   }
 
   /**

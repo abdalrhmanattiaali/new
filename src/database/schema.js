@@ -11,9 +11,11 @@ export const schema = {
       family_name TEXT NOT NULL,
       timezone TEXT DEFAULT 'Africa/Cairo',
       language TEXT DEFAULT 'ar',
-      family_group_id TEXT, -- WhatsApp Group ID (e.g., 201234567890-1234567890@g.us)
+      family_group_id TEXT UNIQUE, -- WhatsApp Group ID (e.g., 201234567890-1234567890@g.us)
       send_to_group INTEGER DEFAULT 1, -- 1 = send to group, 0 = send individually
+      marriage_date DATE, -- تاريخ الزواج
       onboarding_completed INTEGER DEFAULT 0,
+      onboarding_source TEXT DEFAULT 'group', -- 'group' or 'individual'
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
@@ -26,8 +28,9 @@ export const schema = {
       family_id INTEGER NOT NULL,
       name TEXT NOT NULL,
       role TEXT NOT NULL, -- 'father' or 'mother'
-      phone_number TEXT NOT NULL UNIQUE, -- encrypted
-      preferred_time TEXT, -- 'morning', 'noon', 'evening'
+      phone_number TEXT, -- encrypted (optional when onboarding from group)
+      birth_date DATE, -- تاريخ الميلاد
+      age INTEGER, -- العمر
       notification_enabled INTEGER DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -361,6 +364,23 @@ export const schema = {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE
     )
+  `,
+
+  // جدول التذكيرات بالمناسبات
+  anniversary_reminders: `
+    CREATE TABLE IF NOT EXISTS anniversary_reminders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      family_id INTEGER,
+      guardian_id INTEGER,
+      reminder_type TEXT NOT NULL, -- 'birthday_father', 'birthday_mother', 'birthday_child', 'marriage_anniversary'
+      anniversary_date DATE NOT NULL, -- تاريخ المناسبة (شهر ويوم فقط)
+      reminder_days_before INTEGER DEFAULT 1, -- عدد الأيام قبل التذكير
+      last_reminded_year INTEGER, -- آخر سنة تم التذكير فيها
+      enabled INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE,
+      FOREIGN KEY (guardian_id) REFERENCES guardians(id) ON DELETE CASCADE
+    )
   `
 };
 
@@ -392,5 +412,11 @@ export const indexes = [
   'CREATE INDEX IF NOT EXISTS idx_tips_shown ON parenting_tips(shown)',
   'CREATE INDEX IF NOT EXISTS idx_motivational_guardian ON motivational_messages(guardian_id)',
   'CREATE INDEX IF NOT EXISTS idx_journey_family ON development_journey(family_id)',
-  'CREATE INDEX IF NOT EXISTS idx_journey_date ON development_journey(journey_date)'
+  'CREATE INDEX IF NOT EXISTS idx_journey_date ON development_journey(journey_date)',
+
+  // New indexes for anniversary reminders
+  'CREATE INDEX IF NOT EXISTS idx_anniversary_family ON anniversary_reminders(family_id)',
+  'CREATE INDEX IF NOT EXISTS idx_anniversary_type ON anniversary_reminders(reminder_type)',
+  'CREATE INDEX IF NOT EXISTS idx_anniversary_date ON anniversary_reminders(anniversary_date)',
+  'CREATE INDEX IF NOT EXISTS idx_family_group ON families(family_group_id)'
 ];

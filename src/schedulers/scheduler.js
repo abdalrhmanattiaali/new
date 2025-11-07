@@ -11,6 +11,7 @@ import { MotivationalService } from '../services/motivationalService.js';
 import { JourneyService } from '../services/journeyService.js';
 import { GoalsService } from '../services/goalsService.js';
 import { DailyMessageService } from '../services/dailyMessageService.js';
+import { AnniversaryReminderService } from '../services/anniversaryReminderService.js';
 
 export class Scheduler {
   constructor(bot, config) {
@@ -23,6 +24,7 @@ export class Scheduler {
     this.journey = new JourneyService(bot, config);
     this.goals = new GoalsService(bot, config);
     this.dailyMessages = new DailyMessageService(bot, config);
+    this.anniversaryReminder = new AnniversaryReminderService(bot, config);
     this.jobs = [];
   }
 
@@ -126,6 +128,13 @@ export class Scheduler {
       '0 15 * * 6',
       'Toy Recommendations',
       () => this.journey.sendToyRecommendations()
+    );
+
+    // Check anniversary reminders (every day at 6:00 AM)
+    this.scheduleJob(
+      '0 6 * * *',
+      'Anniversary Reminders',
+      () => this.anniversaryReminder.checkAndSendReminders()
     );
 
     console.log(`✅ ${this.jobs.length} scheduled jobs initialized`);
@@ -233,6 +242,9 @@ export class Scheduler {
         break;
       case 'Toy Recommendations':
         await this.journey.sendToyRecommendations();
+        break;
+      case 'Anniversary Reminders':
+        await this.anniversaryReminder.checkAndSendReminders();
         break;
       default:
         console.error(`❌ Unknown job: ${jobName}`);
