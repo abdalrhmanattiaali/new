@@ -75,26 +75,66 @@ ai:
 
 # المسارات والمحتوى
 tracks:
-  # المسارات اليومية الأساسية
-  daily:
-    - child_sleep
-    - child_nutrition
-    - child_play
-    - child_language
-    - parents_mental
-    - parents_learning
+  # المسارات اليومية الأساسية - الطفل
+  daily_child:
+    - child_sleep          # نوم الطفل
+    - child_nutrition      # تغذية الطفل
+    - child_play           # لعب الطفل
+    - child_language       # تطوير اللغة
+    - child_creativity     # إبداع الطفل
+    - child_emotions       # عواطف ومشاعر الطفل
+    - child_independence   # الاستقلالية والمهارات الحياتية
+
+  # المسارات اليومية - الأم
+  daily_mother:
+    - mother_selfcare      # العناية بالنفس
+    - mother_energy        # الطاقة والنشاط
+    - mother_emotions      # التعامل مع المشاعر
+    - mother_relationships # العلاقات الاجتماعية
+    - mother_growth        # التطور الشخصي
+    - mother_balance       # التوازن بين الأدوار
+
+  # المسارات اليومية - الأب
+  daily_father:
+    - father_involvement   # المشاركة الفعالة
+    - father_leadership    # القيادة العائلية
+    - father_bonding       # الارتباط بالأطفال
+    - father_support       # دعم الشريكة
+    - father_growth        # التطور الشخصي
+    - father_balance       # التوازن عمل-حياة
+
+  # المسارات اليومية - العائلة
+  daily_family:
+    - family_bonding       # الترابط العائلي
+    - family_traditions    # التقاليد والعادات
+    - family_communication # التواصل العائلي
+    - family_gratitude     # الامتنان والشكر
+    - family_fun           # المرح والضحك
+    - family_values        # القيم العائلية
+
+  # المسارات المشتركة
+  daily_shared:
+    - parents_mental       # الصحة النفسية للوالدين
+    - parents_learning     # تعلم الوالدين
+    - couple_connection    # التواصل الزوجي
 
   # المسارات الاختيارية
   optional:
-    - family_values
     - prayer_times
     - weekend_planner
 
-  # كثافة الرسائل حسب وقت اليوم
+  # كثافة الرسائل حسب وقت اليوم (إجمالي الرسائل)
   density:
-    morning: 1    # عدد الرسائل في الصباح (06:30-12:00)
-    noon: 1       # عدد الرسائل في الظهيرة (12:00-17:00)
-    evening: 1    # عدد الرسائل في المساء (17:00-22:00)
+    morning: 3    # عدد الرسائل في الصباح (06:30-12:00)
+    noon: 2       # عدد الرسائل في الظهيرة (12:00-17:00)
+    evening: 3    # عدد الرسائل في المساء (17:00-22:00)
+
+  # توزيع الرسائل حسب الفئة
+  distribution:
+    child: 3       # 3 رسائل للطفل يومياً
+    mother: 2      # 2 رسالة للأم يومياً
+    father: 2      # 2 رسالة للأب يومياً
+    family: 1      # 1 رسالة للعائلة يومياً
 
   # أشكال المحتوى المدعومة
   formats:

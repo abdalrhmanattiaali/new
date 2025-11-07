@@ -17,6 +17,7 @@
     "test:generate": "node src/test.js generate",
     "test:send": "node src/test.js send",
     "test:group": "node src/test.js group",
+    "test:daily": "node src/test.js daily",
     "test:motivation": "node src/test.js motivation",
     "test:tip": "node src/test.js tip",
     "test:milestone": "node src/test.js milestone",

@@ -10,6 +10,7 @@ import { WeeklyReportService } from '../services/weeklyReport.js';
 import { MotivationalService } from '../services/motivationalService.js';
 import { JourneyService } from '../services/journeyService.js';
 import { GoalsService } from '../services/goalsService.js';
+import { DailyMessageService } from '../services/dailyMessageService.js';
 
 export class Scheduler {
   constructor(bot, config) {
@@ -21,6 +22,7 @@ export class Scheduler {
     this.motivational = new MotivationalService(bot, config);
     this.journey = new JourneyService(bot, config);
     this.goals = new GoalsService(bot, config);
+    this.dailyMessages = new DailyMessageService(bot, config);
     this.jobs = [];
   }
 
@@ -30,11 +32,13 @@ export class Scheduler {
   initialize() {
     console.log('⏰ Initializing schedulers...');
 
-    // Daily message generation (every day at 6:00 AM)
+    // === رسائل يومية متنوعة ===
+
+    // توليد الرسائل اليومية المتنوعة (كل يوم الساعة 5:00 صباحاً)
     this.scheduleJob(
-      '0 6 * * *',
-      'Daily Message Generation',
-      () => this.messageEngine.generateDailyMessages()
+      '0 5 * * *',
+      'Generate Diverse Daily Messages',
+      () => this.dailyMessages.generateAllDailyMessages()
     );
 
     // Send pending messages (every minute)
@@ -194,6 +198,9 @@ export class Scheduler {
     // Jobs are scheduled with cron, so we need to extract the task
     // For now, we'll run the appropriate method directly
     switch (jobName) {
+      case 'Generate Diverse Daily Messages':
+        await this.dailyMessages.generateAllDailyMessages();
+        break;
       case 'Daily Message Generation':
         await this.messageEngine.generateDailyMessages();
         break;

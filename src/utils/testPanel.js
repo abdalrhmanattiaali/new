@@ -10,6 +10,7 @@ import { WeeklyReportService } from '../services/weeklyReport.js';
 import { MotivationalService } from '../services/motivationalService.js';
 import { JourneyService } from '../services/journeyService.js';
 import { GoalsService } from '../services/goalsService.js';
+import { DailyMessageService } from '../services/dailyMessageService.js';
 import { FamilyModel, GuardianModel, ChildModel } from '../database/models.js';
 
 export class TestPanel {
@@ -23,6 +24,7 @@ export class TestPanel {
     this.motivational = new MotivationalService(bot, config);
     this.journey = new JourneyService(bot, config);
     this.goals = new GoalsService(bot, config);
+    this.dailyMessages = new DailyMessageService(bot, config);
   }
 
   /**
@@ -42,6 +44,7 @@ export class TestPanel {
     console.log('5️⃣  test:generate         - توليد رسائل اليوم');
     console.log('6️⃣  test:send             - إرسال الرسائل المجدولة');
     console.log('7️⃣  test:group            - اختبار الإرسال للجروب');
+    console.log('8️⃣  test:daily            - اختبار الرسائل اليومية المتنوعة ⭐');
     console.log('\n  === الميزات الجديدة (رحلة التطور) ===');
     console.log('9️⃣  test:motivation       - رسالة تحفيزية');
     console.log('🔟 test:tip              - نصيحة تربوية');
@@ -115,6 +118,10 @@ export class TestPanel {
 
         case 'journey':
           await this.testJourney();
+          break;
+
+        case 'daily':
+          await this.testDailyMessages();
           break;
 
         case 'all':
@@ -434,6 +441,97 @@ export class TestPanel {
     }
 
     console.log('✅ اكتمل اختبار رحلة التطور\n');
+  }
+
+  /**
+   * Test diverse daily messages
+   */
+  async testDailyMessages() {
+    console.log('\n🌟 اختبار الرسائل اليومية المتنوعة...\n');
+
+    const families = FamilyModel.getAll();
+    if (families.length === 0) {
+      console.log('❌ لا توجد عائلات مسجلة.');
+      return;
+    }
+
+    const family = families[0];
+    const guardians = GuardianModel.getByFamily(family.id);
+    const children = ChildModel.getByFamily(family.id);
+
+    if (children.length === 0 || guardians.length === 0) {
+      console.log('❌ لا توجد بيانات كافية (تحتاج طفل و ولي أمر على الأقل).');
+      return;
+    }
+
+    const child = children[0];
+    const father = guardians.find(g => g.role === 'father');
+    const mother = guardians.find(g => g.role === 'mother');
+
+    console.log(`👨‍👩‍👧 عائلة: ${family.family_name}`);
+    console.log(`👶 طفل: ${child.name}\n`);
+
+    // اختبار رسالة للطفل
+    if (child) {
+      console.log('📨 اختبار رسالة للطفل (child_creativity):\n');
+      const childMsg = await this.dailyMessages.generateChildMessage(
+        child.name,
+        this.dailyMessages.calculateAgeInMonths(child.birth_date),
+        'child_creativity',
+        'الصباح',
+        null
+      );
+      console.log(childMsg);
+      console.log('\n---\n');
+    }
+
+    // اختبار رسالة للأم
+    if (mother && child) {
+      console.log('💙 اختبار رسالة للأم (mother_selfcare):\n');
+      const motherMsg = await this.dailyMessages.generateMotherMessage(
+        mother.name,
+        child.name,
+        this.dailyMessages.calculateAgeInMonths(child.birth_date),
+        'mother_selfcare',
+        'الصباح'
+      );
+      console.log(motherMsg);
+      console.log('\n---\n');
+    }
+
+    // اختبار رسالة للأب
+    if (father && child) {
+      console.log('💙 اختبار رسالة للأب (father_bonding):\n');
+      const fatherMsg = await this.dailyMessages.generateFatherMessage(
+        father.name,
+        child.name,
+        this.dailyMessages.calculateAgeInMonths(child.birth_date),
+        'father_bonding',
+        'المساء'
+      );
+      console.log(fatherMsg);
+      console.log('\n---\n');
+    }
+
+    // اختبار رسالة للعائلة
+    if (child) {
+      console.log('👨‍👩‍👧 اختبار رسالة للعائلة (family_bonding):\n');
+      const familyMsg = await this.dailyMessages.generateFamilyMessage(
+        family.family_name,
+        child.name,
+        this.dailyMessages.calculateAgeInMonths(child.birth_date),
+        'family_bonding',
+        'المساء'
+      );
+      console.log(familyMsg);
+      console.log('\n---\n');
+    }
+
+    // توليد جميع الرسائل اليومية
+    console.log('🔄 توليد جميع الرسائل اليومية للعائلة...\n');
+    await this.dailyMessages.generateFamilyDailyMessages(family);
+
+    console.log('✅ اكتمل اختبار الرسائل اليومية المتنوعة\n');
   }
 
   /**
