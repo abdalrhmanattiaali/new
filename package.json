@@ -9,6 +9,7 @@
     "dev": "node --watch src/index.js",
     "db:init": "node src/database/init.js",
     "db:migrate": "node src/database/migrate.js",
+    "setup:group": "node scripts/setup-group.js",
     "test": "node src/test.js",
     "test:weather": "node src/test.js weather",
     "test:message": "node src/test.js message",
