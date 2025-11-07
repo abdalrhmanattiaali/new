@@ -7,6 +7,9 @@ import cron from 'node-cron';
 import { MessageEngine } from '../services/messageEngine.js';
 import { WeekendPlannerService } from '../services/weekendPlanner.js';
 import { WeeklyReportService } from '../services/weeklyReport.js';
+import { MotivationalService } from '../services/motivationalService.js';
+import { JourneyService } from '../services/journeyService.js';
+import { GoalsService } from '../services/goalsService.js';
 
 export class Scheduler {
   constructor(bot, config) {
@@ -15,6 +18,9 @@ export class Scheduler {
     this.messageEngine = new MessageEngine(bot, config);
     this.weekendPlanner = new WeekendPlannerService(bot, config);
     this.weeklyReport = new WeeklyReportService(bot, config);
+    this.motivational = new MotivationalService(bot, config);
+    this.journey = new JourneyService(bot, config);
+    this.goals = new GoalsService(bot, config);
     this.jobs = [];
   }
 
@@ -72,6 +78,50 @@ export class Scheduler {
       '0 3 * * *',
       'Cleanup Old Messages',
       () => this.cleanupOldMessages()
+    );
+
+    // === Journey & Goals Features ===
+
+    // Send daily motivational messages (every day at 7:00 AM)
+    this.scheduleJob(
+      '0 7 * * *',
+      'Daily Motivational Messages',
+      () => this.motivational.sendDailyMotivationToAllFamilies()
+    );
+
+    // Send parenting tips (every 2 days at 2:00 PM)
+    this.scheduleJob(
+      '0 14 */2 * *',
+      'Parenting Tips',
+      () => this.motivational.sendParentingTipsToAllFamilies()
+    );
+
+    // Check milestones and send updates (every Sunday at 8:00 AM)
+    this.scheduleJob(
+      '0 8 * * 0',
+      'Milestone Checks',
+      () => this.journey.checkAndSuggestMilestones()
+    );
+
+    // Send goal reminders (every Monday at 9:00 AM)
+    this.scheduleJob(
+      '0 9 * * 1',
+      'Goal Reminders',
+      () => this.goals.sendGoalReminders()
+    );
+
+    // Monthly goal progress check (1st day of month at 10:00 AM)
+    this.scheduleJob(
+      '0 10 1 * *',
+      'Monthly Goal Review',
+      () => this.goals.sendMonthlyGoalReview()
+    );
+
+    // Suggest toy recommendations (every 3 weeks on Saturday at 3:00 PM)
+    this.scheduleJob(
+      '0 15 * * 6',
+      'Toy Recommendations',
+      () => this.journey.sendToyRecommendations()
     );
 
     console.log(`✅ ${this.jobs.length} scheduled jobs initialized`);
@@ -158,6 +208,24 @@ export class Scheduler {
         break;
       case 'Weekly Reports':
         await this.weeklyReport.generateAndSendReports();
+        break;
+      case 'Daily Motivational Messages':
+        await this.motivational.sendDailyMotivationToAllFamilies();
+        break;
+      case 'Parenting Tips':
+        await this.motivational.sendParentingTipsToAllFamilies();
+        break;
+      case 'Milestone Checks':
+        await this.journey.checkAndSuggestMilestones();
+        break;
+      case 'Goal Reminders':
+        await this.goals.sendGoalReminders();
+        break;
+      case 'Monthly Goal Review':
+        await this.goals.sendMonthlyGoalReview();
+        break;
+      case 'Toy Recommendations':
+        await this.journey.sendToyRecommendations();
         break;
       default:
         console.error(`❌ Unknown job: ${jobName}`);

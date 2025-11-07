@@ -7,6 +7,9 @@ import { MessageEngine } from '../services/messageEngine.js';
 import { WeatherService } from '../services/weatherService.js';
 import { WeekendPlannerService } from '../services/weekendPlanner.js';
 import { WeeklyReportService } from '../services/weeklyReport.js';
+import { MotivationalService } from '../services/motivationalService.js';
+import { JourneyService } from '../services/journeyService.js';
+import { GoalsService } from '../services/goalsService.js';
 import { FamilyModel, GuardianModel, ChildModel } from '../database/models.js';
 
 export class TestPanel {
@@ -17,6 +20,9 @@ export class TestPanel {
     this.weatherService = new WeatherService(config);
     this.weekendPlanner = new WeekendPlannerService(bot, config);
     this.weeklyReport = new WeeklyReportService(bot, config);
+    this.motivational = new MotivationalService(bot, config);
+    this.journey = new JourneyService(bot, config);
+    this.goals = new GoalsService(bot, config);
   }
 
   /**
@@ -28,6 +34,7 @@ export class TestPanel {
     console.log('   WhatsApp Family AI Assistant - Test Panel');
     console.log('='.repeat(60));
     console.log('\n📋 الأوامر المتاحة:\n');
+    console.log('  === الميزات الأساسية ===');
     console.log('1️⃣  test:weather          - اختبار حالة الطقس');
     console.log('2️⃣  test:message [type]   - اختبار رسالة محددة');
     console.log('3️⃣  test:weekend          - اختبار خطة نهاية الأسبوع');
@@ -35,10 +42,19 @@ export class TestPanel {
     console.log('5️⃣  test:generate         - توليد رسائل اليوم');
     console.log('6️⃣  test:send             - إرسال الرسائل المجدولة');
     console.log('7️⃣  test:group            - اختبار الإرسال للجروب');
-    console.log('8️⃣  test:all              - اختبار شامل لجميع الخصائص');
+    console.log('\n  === الميزات الجديدة (رحلة التطور) ===');
+    console.log('9️⃣  test:motivation       - رسالة تحفيزية');
+    console.log('🔟 test:tip              - نصيحة تربوية');
+    console.log('1️⃣1️⃣ test:milestone       - معالم التطور');
+    console.log('1️⃣2️⃣ test:toys            - اقتراحات الألعاب');
+    console.log('1️⃣3️⃣ test:goals           - أهداف الوالدين');
+    console.log('1️⃣4️⃣ test:journey         - رحلة التطور الكاملة');
+    console.log('\n8️⃣  test:all              - اختبار شامل لجميع الخصائص');
     console.log('\n💡 أمثلة:');
     console.log('   npm run test -- weather');
     console.log('   npm run test -- message child_play');
+    console.log('   npm run test -- motivation');
+    console.log('   npm run test -- journey');
     console.log('   npm run test -- all\n');
     console.log('='.repeat(60) + '\n');
   }
@@ -75,6 +91,30 @@ export class TestPanel {
 
         case 'group':
           await this.testGroup();
+          break;
+
+        case 'motivation':
+          await this.testMotivation();
+          break;
+
+        case 'tip':
+          await this.testParentingTip();
+          break;
+
+        case 'milestone':
+          await this.testMilestone();
+          break;
+
+        case 'toys':
+          await this.testToys();
+          break;
+
+        case 'goals':
+          await this.testGoals();
+          break;
+
+        case 'journey':
+          await this.testJourney();
           break;
 
         case 'all':
@@ -216,6 +256,187 @@ export class TestPanel {
   }
 
   /**
+   * Test motivational messages
+   */
+  async testMotivation() {
+    console.log('\n💙 اختبار الرسائل التحفيزية...\n');
+
+    const families = FamilyModel.getAll();
+    if (families.length === 0) {
+      console.log('❌ لا توجد عائلات مسجلة.');
+      return;
+    }
+
+    const family = families[0];
+    const guardians = GuardianModel.getByFamily(family.id);
+
+    if (guardians.length > 0) {
+      const message = await this.motivational.generateMotivationalMessage(guardians[0]);
+      console.log('📨 رسالة تحفيزية للأب/الأم:\n');
+      console.log(message);
+      console.log();
+    }
+
+    console.log('✅ اكتمل اختبار الرسائل التحفيزية\n');
+  }
+
+  /**
+   * Test parenting tips
+   */
+  async testParentingTip() {
+    console.log('\n💡 اختبار النصائح التربوية...\n');
+
+    const families = FamilyModel.getAll();
+    if (families.length === 0) {
+      console.log('❌ لا توجد عائلات مسجلة.');
+      return;
+    }
+
+    const family = families[0];
+    const tip = await this.motivational.generateParentingTip(family.id);
+
+    if (tip) {
+      console.log('📝 نصيحة تربوية:\n');
+      console.log(tip);
+      console.log();
+    }
+
+    console.log('✅ اكتمل اختبار النصائح التربوية\n');
+  }
+
+  /**
+   * Test milestones
+   */
+  async testMilestone() {
+    console.log('\n📊 اختبار معالم التطور...\n');
+
+    const families = FamilyModel.getAll();
+    if (families.length === 0) {
+      console.log('❌ لا توجد عائلات مسجلة.');
+      return;
+    }
+
+    const family = families[0];
+    const children = ChildModel.getByFamily(family.id);
+
+    if (children.length > 0) {
+      const child = children[0];
+      const ageMonths = this.journey.calculateAgeInMonths(child.birth_date);
+
+      console.log(`👶 طفل: ${child.name}`);
+      console.log(`📅 العمر: ${this.journey.formatAge(ageMonths)}\n`);
+
+      // Initialize journey if not done
+      await this.journey.initializeJourney(family.id);
+
+      // Get milestones
+      const milestones = this.journey.getMilestoneTemplates(ageMonths);
+      console.log('📋 معالم التطور المتوقعة:\n');
+      milestones.slice(0, 5).forEach(m => {
+        console.log(`  ${this.getMilestoneIcon(m.type)} ${m.title}`);
+        console.log(`     ${m.description}`);
+        console.log();
+      });
+    }
+
+    console.log('✅ اكتمل اختبار معالم التطور\n');
+  }
+
+  /**
+   * Test toy recommendations
+   */
+  async testToys() {
+    console.log('\n🎁 اختبار اقتراحات الألعاب...\n');
+
+    const families = FamilyModel.getAll();
+    if (families.length === 0) {
+      console.log('❌ لا توجد عائلات مسجلة.');
+      return;
+    }
+
+    const family = families[0];
+    const children = ChildModel.getByFamily(family.id);
+
+    if (children.length > 0) {
+      const child = children[0];
+      const ageMonths = this.journey.calculateAgeInMonths(child.birth_date);
+
+      console.log(`👶 طفل: ${child.name}`);
+      console.log(`📅 العمر: ${this.journey.formatAge(ageMonths)}\n`);
+
+      await this.journey.generateToyRecommendations(child.id, ageMonths);
+      console.log('✅ تم توليد اقتراحات الألعاب\n');
+    }
+
+    console.log('✅ اكتمل اختبار اقتراحات الألعاب\n');
+  }
+
+  /**
+   * Test parent goals
+   */
+  async testGoals() {
+    console.log('\n📚 اختبار أهداف الوالدين...\n');
+
+    const guardians = GuardianModel.getAll();
+    if (guardians.length === 0) {
+      console.log('❌ لا يوجد أولياء أمور مسجلون.');
+      return;
+    }
+
+    const guardian = guardians[0];
+    console.log(`👤 ولي الأمر: ${guardian.name} (${guardian.role})\n`);
+
+    // Suggest goals
+    const goals = await this.goals.suggestGoals(guardian.id);
+
+    console.log('🎯 أهداف مقترحة:\n');
+    goals.forEach((goal, index) => {
+      console.log(`${index + 1}. ${this.goals.getGoalIcon(goal.type)} ${goal.title}`);
+      console.log(`   ${goal.description}`);
+      console.log(`   الفئة: ${goal.category}`);
+      console.log();
+    });
+
+    console.log('✅ اكتمل اختبار أهداف الوالدين\n');
+  }
+
+  /**
+   * Test full journey
+   */
+  async testJourney() {
+    console.log('\n🌟 اختبار رحلة التطور الكاملة...\n');
+
+    const families = FamilyModel.getAll();
+    if (families.length === 0) {
+      console.log('❌ لا توجد عائلات مسجلة.');
+      return;
+    }
+
+    const family = families[0];
+    console.log(`👨‍👩‍👧 عائلة: ${family.family_name}\n`);
+
+    // Initialize journey
+    await this.journey.initializeJourney(family.id);
+
+    // Get journey timeline
+    const timeline = this.journey.getJourneyTimeline(family.id, 10);
+
+    if (timeline.length > 0) {
+      console.log('📜 آخر أحداث الرحلة:\n');
+      timeline.forEach(event => {
+        console.log(`  📅 ${event.journey_date}`);
+        console.log(`  ${this.getEventIcon(event.event_type)} ${event.event_title}`);
+        console.log(`     ${event.event_description}`);
+        console.log();
+      });
+    } else {
+      console.log('📝 الرحلة بدأت للتو! سيتم تسجيل الأحداث تلقائياً.\n');
+    }
+
+    console.log('✅ اكتمل اختبار رحلة التطور\n');
+  }
+
+  /**
    * Run all tests
    */
   async testAll() {
@@ -231,8 +452,53 @@ export class TestPanel {
     await this.sleep(2000);
 
     await this.testGroup();
+    await this.sleep(2000);
+
+    // Journey tests
+    await this.testMotivation();
+    await this.sleep(2000);
+
+    await this.testParentingTip();
+    await this.sleep(2000);
+
+    await this.testMilestone();
+    await this.sleep(2000);
+
+    await this.testToys();
+    await this.sleep(2000);
+
+    await this.testGoals();
+    await this.sleep(2000);
+
+    await this.testJourney();
 
     console.log('\n✅ اكتملت جميع الاختبارات بنجاح! 🎉\n');
+  }
+
+  /**
+   * Get milestone icon by type
+   */
+  getMilestoneIcon(type) {
+    const icons = {
+      physical: '🏃',
+      cognitive: '🧠',
+      social: '👥',
+      language: '💬'
+    };
+    return icons[type] || '📌';
+  }
+
+  /**
+   * Get event icon by type
+   */
+  getEventIcon(type) {
+    const icons = {
+      milestone: '🎯',
+      goal_achieved: '🏆',
+      learning_completed: '📚',
+      challenge: '💪'
+    };
+    return icons[type] || '⭐';
   }
 
   /**

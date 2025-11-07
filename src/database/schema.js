@@ -249,6 +249,118 @@ export const schema = {
       FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE,
       FOREIGN KEY (guardian_id) REFERENCES guardians(id) ON DELETE CASCADE
     )
+  `,
+
+  // جدول أهداف الوالدين
+  parent_goals: `
+    CREATE TABLE IF NOT EXISTS parent_goals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      guardian_id INTEGER NOT NULL,
+      goal_type TEXT NOT NULL, -- 'course', 'book', 'skill', 'habit'
+      title TEXT NOT NULL,
+      description TEXT,
+      category TEXT, -- 'parenting', 'self_development', 'health', 'relationship'
+      target_date DATE,
+      progress INTEGER DEFAULT 0, -- 0-100
+      status TEXT DEFAULT 'active', -- 'active', 'completed', 'paused', 'cancelled'
+      milestones TEXT, -- JSON array of sub-goals
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      completed_at DATETIME,
+      FOREIGN KEY (guardian_id) REFERENCES guardians(id) ON DELETE CASCADE
+    )
+  `,
+
+  // جدول معالم تطور الطفل
+  child_milestones: `
+    CREATE TABLE IF NOT EXISTS child_milestones (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      child_id INTEGER NOT NULL,
+      milestone_type TEXT NOT NULL, -- 'physical', 'cognitive', 'social', 'language'
+      title TEXT NOT NULL,
+      description TEXT,
+      expected_age_months INTEGER, -- العمر المتوقع بالأشهر
+      achieved INTEGER DEFAULT 0,
+      achieved_date DATE,
+      age_at_achievement_months INTEGER,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE
+    )
+  `,
+
+  // جدول اقتراحات الألعاب
+  toy_recommendations: `
+    CREATE TABLE IF NOT EXISTS toy_recommendations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      child_id INTEGER NOT NULL,
+      toy_name TEXT NOT NULL,
+      toy_category TEXT, -- 'educational', 'creative', 'physical', 'sensory'
+      age_range_min_months INTEGER,
+      age_range_max_months INTEGER,
+      benefits TEXT, -- JSON array of benefits
+      price_range TEXT, -- 'budget', 'moderate', 'premium'
+      purchase_link TEXT,
+      recommended_by_ai INTEGER DEFAULT 1,
+      parent_rating INTEGER, -- 1-5
+      purchased INTEGER DEFAULT 0,
+      purchased_date DATE,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE
+    )
+  `,
+
+  // جدول النصائح التربوية
+  parenting_tips: `
+    CREATE TABLE IF NOT EXISTS parenting_tips (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      family_id INTEGER NOT NULL,
+      child_age_months INTEGER,
+      category TEXT, -- 'discipline', 'communication', 'education', 'health'
+      tip_content TEXT NOT NULL,
+      source TEXT, -- 'ai', 'expert', 'research'
+      relevance_score REAL, -- 0-1
+      shown INTEGER DEFAULT 0,
+      shown_date DATE,
+      parent_feedback TEXT, -- 'helpful', 'not_helpful', 'applied'
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE
+    )
+  `,
+
+  // جدول الرسائل التحفيزية
+  motivational_messages: `
+    CREATE TABLE IF NOT EXISTS motivational_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      guardian_id INTEGER NOT NULL,
+      message_type TEXT, -- 'encouragement', 'appreciation', 'milestone_celebration'
+      message_content TEXT NOT NULL,
+      context TEXT, -- JSON: what triggered this message
+      sent_date DATE,
+      parent_reaction TEXT, -- 'loved', 'liked', 'neutral'
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (guardian_id) REFERENCES guardians(id) ON DELETE CASCADE
+    )
+  `,
+
+  // جدول رحلة التطور الزمنية
+  development_journey: `
+    CREATE TABLE IF NOT EXISTS development_journey (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      family_id INTEGER NOT NULL,
+      journey_date DATE NOT NULL,
+      child_age_months INTEGER,
+      event_type TEXT, -- 'milestone', 'goal_achieved', 'learning_completed', 'challenge'
+      event_title TEXT NOT NULL,
+      event_description TEXT,
+      participants TEXT, -- JSON: who was involved (father, mother, child)
+      media_attachments TEXT, -- JSON array of photo/video references
+      emotional_tone TEXT, -- 'joyful', 'proud', 'challenging', 'growth'
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE
+    )
   `
 };
 
@@ -267,5 +379,18 @@ export const indexes = [
   'CREATE INDEX IF NOT EXISTS idx_tracking_child ON daily_tracking(child_id)',
   'CREATE INDEX IF NOT EXISTS idx_tracking_date ON daily_tracking(tracking_date)',
   'CREATE INDEX IF NOT EXISTS idx_scheduled_time ON scheduled_messages(scheduled_time)',
-  'CREATE INDEX IF NOT EXISTS idx_content_category ON content_items(category)'
+  'CREATE INDEX IF NOT EXISTS idx_content_category ON content_items(category)',
+
+  // New indexes for journey features
+  'CREATE INDEX IF NOT EXISTS idx_parent_goals_guardian ON parent_goals(guardian_id)',
+  'CREATE INDEX IF NOT EXISTS idx_parent_goals_status ON parent_goals(status)',
+  'CREATE INDEX IF NOT EXISTS idx_milestones_child ON child_milestones(child_id)',
+  'CREATE INDEX IF NOT EXISTS idx_milestones_achieved ON child_milestones(achieved)',
+  'CREATE INDEX IF NOT EXISTS idx_toys_child ON toy_recommendations(child_id)',
+  'CREATE INDEX IF NOT EXISTS idx_toys_purchased ON toy_recommendations(purchased)',
+  'CREATE INDEX IF NOT EXISTS idx_tips_family ON parenting_tips(family_id)',
+  'CREATE INDEX IF NOT EXISTS idx_tips_shown ON parenting_tips(shown)',
+  'CREATE INDEX IF NOT EXISTS idx_motivational_guardian ON motivational_messages(guardian_id)',
+  'CREATE INDEX IF NOT EXISTS idx_journey_family ON development_journey(family_id)',
+  'CREATE INDEX IF NOT EXISTS idx_journey_date ON development_journey(journey_date)'
 ];
