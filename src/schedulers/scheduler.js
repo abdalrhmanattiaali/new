@@ -14,6 +14,7 @@ import { DailyMessageService } from '../services/dailyMessageService.js';
 import { AnniversaryReminderService } from '../services/anniversaryReminderService.js';
 import { ChildDevelopmentService } from '../services/childDevelopmentService.js';
 import { MonthlyMilestoneService } from '../services/monthlyMilestoneService.js';
+import { DailyWeatherService } from '../services/dailyWeatherService.js';
 
 export class Scheduler {
   constructor(bot, config) {
@@ -29,6 +30,7 @@ export class Scheduler {
     this.anniversaryReminder = new AnniversaryReminderService(bot, config);
     this.childDevelopment = new ChildDevelopmentService(bot, config);
     this.monthlyMilestone = new MonthlyMilestoneService(bot, config);
+    this.dailyWeather = new DailyWeatherService(bot, config);
     this.jobs = [];
   }
 
@@ -155,6 +157,13 @@ export class Scheduler {
       () => this.monthlyMilestone.checkAndSendMonthlyReminders()
     );
 
+    // Send daily weather updates (every day at 9:00 AM)
+    this.scheduleJob(
+      '0 9 * * *',
+      'Daily Weather Updates',
+      () => this.dailyWeather.sendDailyWeatherUpdates()
+    );
+
     console.log(`✅ ${this.jobs.length} scheduled jobs initialized`);
   }
 
@@ -269,6 +278,9 @@ export class Scheduler {
         break;
       case 'Monthly Milestone Reminders':
         await this.monthlyMilestone.checkAndSendMonthlyReminders();
+        break;
+      case 'Daily Weather Updates':
+        await this.dailyWeather.sendDailyWeatherUpdates();
         break;
       default:
         console.error(`❌ Unknown job: ${jobName}`);
