@@ -8,6 +8,7 @@
 import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import OpenAI from 'openai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -17,6 +18,11 @@ export class AnniversaryReminderService {
     this.bot = bot;
     this.config = config;
     this.dbPath = join(__dirname, '..', '..', 'data', 'family_assistant.db');
+
+    // Initialize OpenAI
+    this.openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
   }
 
   /**
@@ -76,93 +82,27 @@ export class AnniversaryReminderService {
       return;
     }
 
-    let message = '';
     const tomorrowDate = this.formatArabicDate(anniversaryDate);
+    const age = this.calculateUpcomingAge(anniversaryDate, currentYear);
 
-    switch (reminder.reminder_type) {
-      case 'birthday_father':
-        const fatherAge = this.calculateUpcomingAge(anniversaryDate, currentYear);
-        message = `
-🎂 *تذكير بعيد ميلاد الأب*
-
-غداً ${tomorrowDate} عيد ميلاد الأب *${reminder.guardian_name}* 🎉
-
-سيكمل *${fatherAge} سنة* 🎈
-
-💡 *اقتراحات للاحتفال:*
-• تحضير هدية مفاجئة
-• كعكة عيد ميلاد مع الأطفال
-• قضاء وقت ممتع معاً
-
-لا تنسوا أن تجعلوا يومه مميزاً! 💙
-        `.trim();
-        break;
-
-      case 'birthday_mother':
-        const motherAge = this.calculateUpcomingAge(anniversaryDate, currentYear);
-        message = `
-🎂 *تذكير بعيد ميلاد الأم*
-
-غداً ${tomorrowDate} عيد ميلاد الأم *${reminder.guardian_name}* 🎉
-
-ستكمل *${motherAge} سنة* 🎈
-
-💡 *اقتراحات للاحتفال:*
-• هدية خاصة من القلب
-• كعكة عيد ميلاد مع الأطفال
-• يوم راحة تستحقه
-
-اجعلوا يومها استثنائياً! 💝
-        `.trim();
-        break;
-
-      case 'birthday_child':
-        // Get child info
-        const child = db.prepare(`
-          SELECT name FROM children
-          WHERE family_id = ? AND birth_date = ?
-        `).get(reminder.family_id, reminder.anniversary_date);
-
-        const childAge = this.calculateUpcomingAge(anniversaryDate, currentYear);
-        message = `
-🎂 *تذكير بعيد ميلاد الطفل*
-
-غداً ${tomorrowDate} عيد ميلاد *${child?.name || 'الطفل'}* 🎉
-
-سيكمل/ستكمل *${childAge} سنة* 🎈
-
-💡 *اقتراحات للاحتفال:*
-• حفلة عيد ميلاد صغيرة
-• كعكة وبالونات
-• هدايا وألعاب جديدة
-• دعوة الأصدقاء والعائلة
-
-اجعلوا يومه/يومها لا يُنسى! 🎊
-        `.trim();
-        break;
-
-      case 'marriage_anniversary':
-        const yearsMarried = currentYear - anniversaryDate.getFullYear();
-        message = `
-💍 *تذكير بذكرى الزواج*
-
-غداً ${tomorrowDate} ذكرى زواجكم السعيد! 🎊
-
-ستكملون *${yearsMarried} سنة* معاً 💕
-
-💡 *اقتراحات للاحتفال:*
-• عشاء رومانسي خاص
-• نزهة عائلية
-• تبادل الهدايا
-• إعادة النظر في صور الزفاف
-
-احتفلوا بحبكم ورحلتكم المشتركة! 🌹
-        `.trim();
-        break;
-
-      default:
-        return;
+    // Get child name if it's a child birthday
+    let childName = null;
+    if (reminder.reminder_type === 'birthday_child') {
+      const child = db.prepare(`
+        SELECT name FROM children
+        WHERE family_id = ? AND birth_date = ?
+      `).get(reminder.family_id, reminder.anniversary_date);
+      childName = child?.name || 'الطفل';
     }
+
+    // Generate AI-powered reminder message
+    const message = await this.generateAdvanceReminderMessage(
+      reminder.reminder_type,
+      reminder.guardian_name || childName,
+      tomorrowDate,
+      age,
+      reminder.family_name
+    );
 
     // Send message
     await this.sendToFamily(reminder.family_group_id, reminder.send_to_group, message);
@@ -184,89 +124,27 @@ export class AnniversaryReminderService {
     // For celebration messages, we don't track last_reminded_year
     // because advance reminders already update it
 
-    let message = '';
     const todayDate = this.formatArabicDate(anniversaryDate);
+    const age = this.calculateUpcomingAge(anniversaryDate, currentYear);
 
-    switch (reminder.reminder_type) {
-      case 'birthday_father':
-        const fatherAge = this.calculateUpcomingAge(anniversaryDate, currentYear);
-        message = `
-🎊 *كل عام وأنت بخير يا ${reminder.guardian_name}!* 🎊
-
-اليوم ${todayDate} 🎂
-عيد ميلاد سعيد لأب رائع! 👨‍👧
-
-🎈 *${fatherAge} سنة* من العطاء والحب
-
-نتمنى لك يوماً مليئاً بالسعادة والمفاجآت! 💙
-بارك الله فيك وفي عمرك 🤲
-
-#عيد_ميلاد_سعيد 🎉
-        `.trim();
-        break;
-
-      case 'birthday_mother':
-        const motherAge = this.calculateUpcomingAge(anniversaryDate, currentYear);
-        message = `
-🎊 *كل عام وأنتِ بخير يا ${reminder.guardian_name}!* 🎊
-
-اليوم ${todayDate} 🎂
-عيد ميلاد سعيد لأم غالية! 👩‍👧
-
-🎈 *${motherAge} سنة* من الحنان والتضحية
-
-نتمنى لكِ يوماً مليئاً بالفرح والسعادة! 💝
-بارك الله فيكِ وفي عمرك 🤲
-
-#عيد_ميلاد_سعيد 🎉
-        `.trim();
-        break;
-
-      case 'birthday_child':
-        // Get child info
-        const child = db.prepare(`
-          SELECT name FROM children
-          WHERE family_id = ? AND birth_date = ?
-        `).get(reminder.family_id, reminder.anniversary_date);
-
-        const childAge = this.calculateUpcomingAge(anniversaryDate, currentYear);
-        message = `
-🎊 *كل عام و${child?.name || 'الطفل'} بخير!* 🎊
-
-اليوم ${todayDate} 🎂
-عيد ميلاد سعيد! 👶
-
-🎈 *${childAge} سنة* من الفرح والبهجة
-
-نتمنى لكم يوماً مليئاً بالمرح والضحك! 🎉
-بارك الله في عمره/ها وأسعد أيامه/ها 🤲
-
-#عيد_ميلاد_سعيد 🎊
-        `.trim();
-        break;
-
-      case 'marriage_anniversary':
-        const yearsMarried = currentYear - anniversaryDate.getFullYear();
-        message = `
-💍 *ذكرى زواج سعيدة!* 💍
-
-اليوم ${todayDate} 🎊
-ذكرى *${yearsMarried} سنة* من الحب والسعادة! 💕
-
-✨ رحلة جميلة قضيتموها معاً
-✨ ذكريات لا تُنسى صنعتموها
-✨ عائلة رائعة بنيتموها
-
-نتمنى لكم المزيد من السنين السعيدة معاً! 🌹
-بارك الله في زواجكم وأسعد أيامكم 🤲
-
-#ذكرى_زواج_سعيدة 🎉
-        `.trim();
-        break;
-
-      default:
-        return;
+    // Get child name if it's a child birthday
+    let childName = null;
+    if (reminder.reminder_type === 'birthday_child') {
+      const child = db.prepare(`
+        SELECT name FROM children
+        WHERE family_id = ? AND birth_date = ?
+      `).get(reminder.family_id, reminder.anniversary_date);
+      childName = child?.name || 'الطفل';
     }
+
+    // Generate AI-powered celebration message
+    const message = await this.generateCelebrationMessage(
+      reminder.reminder_type,
+      reminder.guardian_name || childName,
+      todayDate,
+      age,
+      reminder.family_name
+    );
 
     // Send message
     await this.sendToFamily(reminder.family_group_id, reminder.send_to_group, message);
@@ -431,6 +309,189 @@ export class AnniversaryReminderService {
     } catch (error) {
       db.close();
       console.error('❌ Error testing anniversary reminders:', error);
+    }
+  }
+
+  /**
+   * Generate advance reminder message using AI
+   */
+  async generateAdvanceReminderMessage(reminderType, personName, date, age, familyName) {
+    const prompts = {
+      birthday_father: `أنت مساعد عائلة ذكي. اكتب رسالة تذكير دافئة ومحفزة بعيد ميلاد الأب ${personName} غداً ${date} (سيكمل ${age} سنة).
+
+المطلوب:
+- رسالة قصيرة ودافئة (100-150 كلمة)
+- ابدأ بـ 🎂 تذكير بعيد ميلاد الأب
+- اذكر الاسم والتاريخ والعمر
+- 3-4 اقتراحات عملية للاحتفال
+- كلمات تحفيزية للعائلة
+- استخدم الإيموجيز المناسبة
+- بالعربية الفصحى الدافئة
+
+اجعل الرسالة فريدة ومميزة في كل مرة!`,
+
+      birthday_mother: `أنت مساعد عائلة ذكي. اكتب رسالة تذكير دافئة ومحفزة بعيد ميلاد الأم ${personName} غداً ${date} (ستكمل ${age} سنة).
+
+المطلوب:
+- رسالة قصيرة ودافئة (100-150 كلمة)
+- ابدأ بـ 🎂 تذكير بعيد ميلاد الأم
+- اذكر الاسم والتاريخ والعمر
+- 3-4 اقتراحات عملية للاحتفال تناسب الأم
+- كلمات تحفيزية وتقدير للأم
+- استخدم الإيموجيز المناسبة
+- بالعربية الفصحى الدافئة
+
+اجعل الرسالة فريدة ومليئة بالحب!`,
+
+      birthday_child: `أنت مساعد عائلة ذكي. اكتب رسالة تذكير مبهجة وحماسية بعيد ميلاد الطفل ${personName} غداً ${date} (سيكمل/ستكمل ${age} سنة).
+
+المطلوب:
+- رسالة قصيرة ومبهجة (100-150 كلمة)
+- ابدأ بـ 🎂 تذكير بعيد ميلاد الطفل
+- اذكر الاسم والتاريخ والعمر
+- 3-4 اقتراحات للاحتفال تناسب عمر ${age} سنة
+- كلمات حماسية للوالدين
+- إيموجيز مرحة
+- بالعربية الفصحى المبسطة
+
+اجعل الرسالة مليئة بالفرح والحماس!`,
+
+      marriage_anniversary: `أنت مساعد عائلة ذكي. اكتب رسالة تذكير رومانسية ودافئة بذكرى زواج عائلة ${familyName} غداً ${date} (${age} سنة معاً).
+
+المطلوب:
+- رسالة قصيرة ورومانسية (100-150 كلمة)
+- ابدأ بـ 💍 تذكير بذكرى الزواج
+- اذكر التاريخ وعدد السنين
+- 3-4 اقتراحات رومانسية للاحتفال
+- كلمات تقدير لرحلتهم معاً
+- إيموجيز رومانسية
+- بالعربية الفصحى الدافئة
+
+اجعل الرسالة تحتفي بالحب والعائلة!`
+    };
+
+    const prompt = prompts[reminderType];
+    if (!prompt) {
+      throw new Error(`Unknown reminder type: ${reminderType}`);
+    }
+
+    try {
+      const completion = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'أنت مساعد عائلة ذكي متخصص في كتابة رسائل دافئة ومحفزة بالعربية.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.9,
+        max_tokens: 500
+      });
+
+      return completion.choices[0].message.content.trim();
+
+    } catch (error) {
+      console.error('Error generating advance reminder with AI:', error);
+      // Fallback to simple message
+      return `🎂 تذكير: غداً ${date} مناسبة خاصة لـ ${personName}! لا تنسوا الاحتفال 🎉`;
+    }
+  }
+
+  /**
+   * Generate celebration message using AI
+   */
+  async generateCelebrationMessage(reminderType, personName, date, age, familyName) {
+    const prompts = {
+      birthday_father: `أنت مساعد عائلة ذكي. اكتب رسالة احتفالية مفرحة ودافئة لعيد ميلاد الأب ${personName} اليوم ${date} (${age} سنة).
+
+المطلوب:
+- رسالة احتفالية مميزة (120-180 كلمة)
+- ابدأ بتهنئة حماسية بالاسم
+- اذكر التاريخ والعمر
+- كلمات تقدير للأب ودوره
+- دعوات طيبة وتمنيات
+- إيموجيز احتفالية
+- هاشتاق مناسب
+- بالعربية الفصحى الدافئة
+
+اجعل الرسالة تنبض بالفرح والامتنان!`,
+
+      birthday_mother: `أنت مساعد عائلة ذكي. اكتب رسالة احتفالية مفرحة ودافئة لعيد ميلاد الأم ${personName} اليوم ${date} (${age} سنة).
+
+المطلوب:
+- رسالة احتفالية مميزة (120-180 كلمة)
+- ابدأ بتهنئة حماسية بالاسم
+- اذكر التاريخ والعمر
+- كلمات تقدير للأم وحنانها
+- دعوات طيبة وتمنيات
+- إيموجيز احتفالية
+- هاشتاق مناسب
+- بالعربية الفصحى الدافئة
+
+اجعل الرسالة تنبض بالحب والتقدير!`,
+
+      birthday_child: `أنت مساعد عائلة ذكي. اكتب رسالة احتفالية مبهجة وحماسية لعيد ميلاد الطفل ${personName} اليوم ${date} (${age} سنة).
+
+المطلوب:
+- رسالة احتفالية مرحة (120-180 كلمة)
+- ابدأ بتهنئة حماسية بالاسم
+- اذكر التاريخ والعمر
+- كلمات فرح وبهجة
+- دعوات طيبة للطفل
+- إيموجيز مرحة وملونة
+- هاشتاق مناسب
+- بالعربية الفصحى المبسطة
+
+اجعل الرسالة تنفجر بالفرح والحماس!`,
+
+      marriage_anniversary: `أنت مساعد عائلة ذكي. اكتب رسالة احتفالية رومانسية لذكرى زواج عائلة ${familyName} اليوم ${date} (${age} سنة معاً).
+
+المطلوب:
+- رسالة احتفالية رومانسية (120-180 كلمة)
+- ابدأ بتهنئة حماسية بذكرى الزواج
+- اذكر التاريخ وعدد السنين
+- احتفِ برحلتهم وذكرياتهم
+- كلمات عن الحب والعائلة
+- دعوات بالسعادة الدائمة
+- إيموجيز رومانسية
+- هاشتاق مناسب
+- بالعربية الفصحى الدافئة
+
+اجعل الرسالة تحتفي بالحب والإنجاز المشترك!`
+    };
+
+    const prompt = prompts[reminderType];
+    if (!prompt) {
+      throw new Error(`Unknown reminder type: ${reminderType}`);
+    }
+
+    try {
+      const completion = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'أنت مساعد عائلة ذكي متخصص في كتابة رسائل احتفالية دافئة ومميزة بالعربية.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.95,
+        max_tokens: 600
+      });
+
+      return completion.choices[0].message.content.trim();
+
+    } catch (error) {
+      console.error('Error generating celebration message with AI:', error);
+      // Fallback to simple message
+      return `🎊 كل عام و${personName} بخير! 🎉\n\nاليوم ${date}\nيوم مميز ومبارك! 💝`;
     }
   }
 }
