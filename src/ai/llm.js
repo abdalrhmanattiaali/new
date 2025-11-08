@@ -1,9 +1,9 @@
 /**
- * LLM Service (OpenAI Integration)
- * خدمة الذكاء الاصطناعي
+ * LLM Service (Anthropic Claude Integration)
+ * خدمة الذكاء الاصطناعي - تم التحديث لاستخدام Claude
  */
 
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -11,8 +11,8 @@ dotenv.config();
 export class LLMService {
   constructor(config) {
     this.config = config;
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY
+    this.claude = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY
     });
 
     this.systemPrompt = config.ai?.llm?.system_prompt || `
@@ -24,9 +24,9 @@ export class LLMService {
 - احترم القيم العائلية والدينية بلطف
     `.trim();
 
-    this.model = config.ai?.llm?.model || 'gpt-4o-mini';
-    this.temperature = config.ai?.llm?.temperature || 0.6;
-    this.maxTokens = config.ai?.llm?.max_tokens || 600;
+    this.model = config.ai?.llm?.model || 'claude-3-5-sonnet-20241022';
+    this.temperature = config.ai?.llm?.temperature || 0.7;
+    this.maxTokens = config.ai?.llm?.max_tokens || 1024;
   }
 
   /**
@@ -46,17 +46,20 @@ export class LLMService {
     const userPrompt = this.buildPrompt(context);
 
     try {
-      const completion = await this.openai.chat.completions.create({
+      const response = await this.claude.messages.create({
         model: this.model,
-        messages: [
-          { role: 'system', content: this.systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
+        max_tokens: this.maxTokens,
         temperature: this.temperature,
-        max_tokens: this.maxTokens
+        system: this.systemPrompt,
+        messages: [
+          {
+            role: 'user',
+            content: userPrompt
+          }
+        ]
       });
 
-      const message = completion.choices[0].message.content;
+      const message = response.content[0].text;
 
       // Safety check
       if (this.containsUnsafeContent(message)) {
@@ -250,17 +253,20 @@ ${additionalContext ? `معلومات إضافية: ${additionalContext}` : ''}
     `.trim();
 
     try {
-      const completion = await this.openai.chat.completions.create({
+      const response = await this.claude.messages.create({
         model: this.model,
-        messages: [
-          { role: 'system', content: this.systemPrompt },
-          { role: 'user', content: prompt }
-        ],
+        max_tokens: 800,
         temperature: this.temperature,
-        max_tokens: 400
+        system: this.systemPrompt,
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ]
       });
 
-      return completion.choices[0].message.content;
+      return response.content[0].text;
 
     } catch (error) {
       console.error('Error generating learning content:', error);

@@ -8,7 +8,7 @@
 import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import OpenAI from 'openai';
+import { ClaudeClient } from '../utils/claudeClient.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -19,10 +19,8 @@ export class AnniversaryReminderService {
     this.config = config;
     this.dbPath = join(__dirname, '..', '..', 'data', 'family_assistant.db');
 
-    // Initialize OpenAI
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY
-    });
+    // Initialize Claude
+    this.claude = new ClaudeClient();
   }
 
   /**
@@ -376,23 +374,16 @@ export class AnniversaryReminderService {
     }
 
     try {
-      const completion = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: 'أنت مساعد عائلة ذكي متخصص في كتابة رسائل دافئة ومحفزة بالعربية.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: 0.9,
-        max_tokens: 500
-      });
+      const message = await this.claude.generateText(
+        'أنت مساعد عائلة ذكي متخصص في كتابة رسائل دافئة ومحفزة بالعربية.',
+        prompt,
+        {
+          temperature: 0.9,
+          maxTokens: 800
+        }
+      );
 
-      return completion.choices[0].message.content.trim();
+      return message.trim();
 
     } catch (error) {
       console.error('Error generating advance reminder with AI:', error);
@@ -470,23 +461,16 @@ export class AnniversaryReminderService {
     }
 
     try {
-      const completion = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: 'أنت مساعد عائلة ذكي متخصص في كتابة رسائل احتفالية دافئة ومميزة بالعربية.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: 0.95,
-        max_tokens: 600
-      });
+      const message = await this.claude.generateText(
+        'أنت مساعد عائلة ذكي متخصص في كتابة رسائل احتفالية دافئة ومميزة بالعربية.',
+        prompt,
+        {
+          temperature: 0.95,
+          maxTokens: 900
+        }
+      );
 
-      return completion.choices[0].message.content.trim();
+      return message.trim();
 
     } catch (error) {
       console.error('Error generating celebration message with AI:', error);

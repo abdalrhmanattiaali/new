@@ -12,6 +12,8 @@ import { JourneyService } from '../services/journeyService.js';
 import { GoalsService } from '../services/goalsService.js';
 import { DailyMessageService } from '../services/dailyMessageService.js';
 import { AnniversaryReminderService } from '../services/anniversaryReminderService.js';
+import { ChildDevelopmentService } from '../services/childDevelopmentService.js';
+import { MonthlyMilestoneService } from '../services/monthlyMilestoneService.js';
 
 export class Scheduler {
   constructor(bot, config) {
@@ -25,6 +27,8 @@ export class Scheduler {
     this.goals = new GoalsService(bot, config);
     this.dailyMessages = new DailyMessageService(bot, config);
     this.anniversaryReminder = new AnniversaryReminderService(bot, config);
+    this.childDevelopment = new ChildDevelopmentService(bot, config);
+    this.monthlyMilestone = new MonthlyMilestoneService(bot, config);
     this.jobs = [];
   }
 
@@ -137,6 +141,20 @@ export class Scheduler {
       () => this.anniversaryReminder.checkAndSendReminders()
     );
 
+    // Send daily child development messages (every day at 8:00 AM)
+    this.scheduleJob(
+      '0 8 * * *',
+      'Child Development Messages',
+      () => this.childDevelopment.sendDailyDevelopmentMessages()
+    );
+
+    // Check monthly milestone reminders (every day at 7:00 AM)
+    this.scheduleJob(
+      '0 7 * * *',
+      'Monthly Milestone Reminders',
+      () => this.monthlyMilestone.checkAndSendMonthlyReminders()
+    );
+
     console.log(`✅ ${this.jobs.length} scheduled jobs initialized`);
   }
 
@@ -245,6 +263,12 @@ export class Scheduler {
         break;
       case 'Anniversary Reminders':
         await this.anniversaryReminder.checkAndSendReminders();
+        break;
+      case 'Child Development Messages':
+        await this.childDevelopment.sendDailyDevelopmentMessages();
+        break;
+      case 'Monthly Milestone Reminders':
+        await this.monthlyMilestone.checkAndSendMonthlyReminders();
         break;
       default:
         console.error(`❌ Unknown job: ${jobName}`);
