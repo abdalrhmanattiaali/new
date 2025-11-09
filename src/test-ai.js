@@ -6,12 +6,12 @@
 // ============================================
 // 🔑 API KEYS - ضع مفاتيح API هنا
 // ============================================
-// ⚠️ IMPORTANT: استبدل بـ API Key الصحيح من Anthropic
-global.ANTHROPIC_API_KEY = 'sk-ant-api03-PLACEHOLDER-REPLACE-WITH-YOUR-REAL-KEY';
-// احصل على API Key من: https://console.anthropic.com/settings/keys
+// ⚠️ IMPORTANT: استبدل بـ API Key الصحيح من OpenAI
+global.OPENAI_API_KEY = 'sk-PLACEHOLDER-REPLACE-WITH-YOUR-REAL-OPENAI-KEY';
+// احصل على API Key من: https://platform.openai.com/api-keys
 // ============================================
 
-import { ClaudeClient } from './utils/claudeClient.js';
+import { OpenAIClient } from './utils/openaiClient.js';
 import { LLMService } from './ai/llm.js';
 import { DailyWeatherService } from './services/dailyWeatherService.js';
 import { ChildDevelopmentService } from './services/childDevelopmentService.js';
@@ -27,17 +27,17 @@ console.log('='.repeat(70) + '\n');
 /**
  * Test 1: Claude Client Direct Test
  */
-async function testClaudeClient() {
-  console.log('📝 [Test 1/6] اختبار ClaudeClient مباشرة...\n');
+async function testOpenAIClient() {
+  console.log('📝 [Test 1/6] اختبار OpenAIClient مباشرة...\n');
 
   try {
-    const claude = new ClaudeClient();
-    console.log('   ✅ تم إنشاء ClaudeClient بنجاح');
+    const openai = new OpenAIClient();
+    console.log('   ✅ تم إنشاء OpenAIClient بنجاح');
 
     const systemPrompt = 'أنت مساعد ودود بالعربية.';
     const userPrompt = 'اكتب جملة ترحيبية قصيرة (سطر واحد فقط)';
 
-    console.log('   🔄 إرسال طلب لـ Claude API...');
+    console.log('   🔄 إرسال طلب لـ OpenAI ChatGPT API...');
     const startTime = Date.now();
 
     const response = await claude.generateText(systemPrompt, userPrompt, {
@@ -54,7 +54,7 @@ async function testClaudeClient() {
     return { success: true, duration, response };
 
   } catch (error) {
-    console.error('   ❌ فشل اختبار ClaudeClient:');
+    console.error('   ❌ فشل اختبار OpenAIClient:');
     console.error('   📛 الخطأ:', error.message);
     if (error.status) console.error('   📛 Status:', error.status);
     if (error.error) console.error('   📛 Details:', JSON.stringify(error.error, null, 2));
@@ -257,7 +257,7 @@ async function testPerformance() {
   console.log('📝 [Test 6/6] اختبار الأداء (5 طلبات متتالية)...\n');
 
   try {
-    const claude = new ClaudeClient();
+    const openai = new OpenAIClient();
     const times = [];
 
     console.log('   🔄 إرسال 5 طلبات...');
@@ -313,7 +313,7 @@ async function runAllTests() {
 
   // Run all tests
   const tests = [
-    { name: 'ClaudeClient', fn: testClaudeClient },
+    { name: 'OpenAIClient', fn: testOpenAIClient },
     { name: 'LLMService', fn: testLLMService },
     { name: 'WeatherService', fn: testWeatherService },
     { name: 'ChildDevelopment', fn: testChildDevelopment },

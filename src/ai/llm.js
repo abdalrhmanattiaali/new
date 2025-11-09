@@ -1,9 +1,9 @@
 /**
- * LLM Service (Anthropic Claude Integration)
- * خدمة الذكاء الاصطناعي - تم التحديث لاستخدام Claude
+ * LLM Service (OpenAI ChatGPT Integration)
+ * خدمة الذكاء الاصطناعي - تم التحديث لاستخدام ChatGPT
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -12,16 +12,16 @@ export class LLMService {
   constructor(config) {
     this.config = config;
 
-    // API Key يُقرأ من ملف index.js (global.ANTHROPIC_API_KEY)
+    // API Key يُقرأ من ملف index.js (global.OPENAI_API_KEY)
     // يمكنك تعديله مباشرة من أول ملف src/index.js
-    const ANTHROPIC_API_KEY = global.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
+    const OPENAI_API_KEY = global.OPENAI_API_KEY || process.env.OPENAI_API_KEY;
 
-    if (!ANTHROPIC_API_KEY || ANTHROPIC_API_KEY.includes('PLACEHOLDER')) {
-      throw new Error('❌ يرجى تعديل ANTHROPIC_API_KEY في ملف src/index.js واستبداله بـ API Key الصحيح من Anthropic');
+    if (!OPENAI_API_KEY || OPENAI_API_KEY.includes('PLACEHOLDER')) {
+      throw new Error('❌ يرجى تعديل OPENAI_API_KEY في ملف src/index.js واستبداله بـ API Key الصحيح من OpenAI');
     }
 
-    this.claude = new Anthropic({
-      apiKey: ANTHROPIC_API_KEY
+    this.openai = new OpenAI({
+      apiKey: OPENAI_API_KEY
     });
 
     this.systemPrompt = config.ai?.llm?.system_prompt || `
@@ -33,7 +33,7 @@ export class LLMService {
 - احترم القيم العائلية والدينية بلطف
     `.trim();
 
-    this.model = config.ai?.llm?.model || 'claude-3-5-sonnet-20240620';
+    this.model = config.ai?.llm?.model || 'gpt-4o-mini';
     this.temperature = config.ai?.llm?.temperature || 0.7;
     this.maxTokens = config.ai?.llm?.max_tokens || 1024;
   }
@@ -55,12 +55,15 @@ export class LLMService {
     const userPrompt = this.buildPrompt(context);
 
     try {
-      const response = await this.claude.messages.create({
+      const response = await this.openai.chat.completions.create({
         model: this.model,
         max_tokens: this.maxTokens,
         temperature: this.temperature,
-        system: this.systemPrompt,
         messages: [
+          {
+            role: 'system',
+            content: this.systemPrompt
+          },
           {
             role: 'user',
             content: userPrompt
@@ -68,7 +71,7 @@ export class LLMService {
         ]
       });
 
-      const message = response.content[0].text;
+      const message = response.choices[0].message.content;
 
       // Safety check
       if (this.containsUnsafeContent(message)) {

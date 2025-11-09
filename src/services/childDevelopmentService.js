@@ -8,7 +8,7 @@
 import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { ClaudeClient } from '../utils/claudeClient.js';
+import { OpenAIClient } from '../utils/openaiClient.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -18,7 +18,7 @@ export class ChildDevelopmentService {
     this.bot = bot;
     this.config = config;
     this.dbPath = join(__dirname, '..', '..', 'data', 'family_assistant.db');
-    this.claude = new ClaudeClient();
+    this.claude = new OpenAIClient();
   }
 
   /**

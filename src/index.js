@@ -6,9 +6,9 @@
 // ============================================
 // 🔑 API KEYS - ضع مفاتيح API هنا
 // ============================================
-// ⚠️ IMPORTANT: استبدل بـ API Key الصحيح من Anthropic
-global.ANTHROPIC_API_KEY = 'sk-ant-api03-PLACEHOLDER-REPLACE-WITH-YOUR-REAL-KEY';
-// احصل على API Key من: https://console.anthropic.com/settings/keys
+// ⚠️ IMPORTANT: استبدل بـ API Key الصحيح من OpenAI
+global.OPENAI_API_KEY = 'sk-PLACEHOLDER-REPLACE-WITH-YOUR-REAL-OPENAI-KEY';
+// احصل على API Key من: https://platform.openai.com/api-keys
 // ============================================
 
 import { WhatsAppBot } from './bot/whatsapp.js';
