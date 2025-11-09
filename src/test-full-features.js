@@ -230,26 +230,49 @@ function createTestFamily(db) {
 }
 
 // ============================================
+// 🤖 Mock Bot Helper
+// ============================================
+function createMockBot(db) {
+  return {
+    db: db,
+    sendMessage: async (phoneNumber, message) => {
+      // Find guardian name
+      const guardian = db.prepare('SELECT name FROM guardians WHERE phone = ?').get(phoneNumber);
+      const guardianName = guardian ? guardian.name : phoneNumber;
+      printMessage(`رسالة إلى ${guardianName} (${phoneNumber})`, message);
+
+      // Log to database
+      const family = db.prepare('SELECT family_id FROM guardians WHERE phone = ?').get(phoneNumber);
+      if (family) {
+        db.prepare(`
+          INSERT INTO message_log (family_id, guardian_phone, message_type, content)
+          VALUES (?, ?, ?, ?)
+        `).run(family.family_id, phoneNumber, 'test', message);
+      }
+
+      return true;
+    },
+    getGroupId: (familyId) => {
+      return null; // No group for testing
+    }
+  };
+}
+
+// ============================================
 // 🧪 Test Functions
 // ============================================
 async function testDailyMessages(db, config, familyId) {
   printSubHeader('اختبار الرسائل اليومية المتنوعة');
 
   try {
-    const service = new DailyMessageService(db, config);
+    const mockBot = createMockBot(db);
+    const service = new DailyMessageService(mockBot, config);
 
-    // محاكاة WhatsApp client
-    const mockClient = {
-      sendMessage: async (to, message) => {
-        printMessage(`رسالة إلى ${to}`, message);
-        return true;
-      }
-    };
-
-    await service.sendDiverseDailyMessages(mockClient);
+    await service.generateAllDailyMessages();
     printSuccess('تم اختبار الرسائل اليومية المتنوعة بنجاح');
   } catch (error) {
     printError(`فشل اختبار الرسائل اليومية: ${error.message}`);
+    console.error(error);
   }
 }
 
@@ -257,19 +280,14 @@ async function testChildDevelopment(db, config, familyId) {
   printSubHeader('اختبار رسائل تطوير الطفل (4 شهور)');
 
   try {
-    const service = new ChildDevelopmentService(db, config);
+    const mockBot = createMockBot(db);
+    const service = new ChildDevelopmentService(mockBot, config);
 
-    const mockClient = {
-      sendMessage: async (to, message) => {
-        printMessage(`رسالة تطوير الطفل إلى ${to}`, message);
-        return true;
-      }
-    };
-
-    await service.sendDailyDevelopmentMessages(mockClient);
+    await service.sendDailyDevelopmentMessages();
     printSuccess('تم اختبار رسائل تطوير الطفل بنجاح');
   } catch (error) {
     printError(`فشل اختبار تطوير الطفل: ${error.message}`);
+    console.error(error);
   }
 }
 
@@ -277,19 +295,14 @@ async function testMonthlyMilestone(db, config, familyId) {
   printSubHeader('اختبار تذكيرات المعالم الشهرية');
 
   try {
-    const service = new MonthlyMilestoneService(db, config);
+    const mockBot = createMockBot(db);
+    const service = new MonthlyMilestoneService(mockBot, config);
 
-    const mockClient = {
-      sendMessage: async (to, message) => {
-        printMessage(`رسالة معلم شهري إلى ${to}`, message);
-        return true;
-      }
-    };
-
-    await service.checkAndSendMonthlyReminders(mockClient);
+    await service.checkAndSendMonthlyReminders();
     printSuccess('تم اختبار المعالم الشهرية بنجاح');
   } catch (error) {
     printError(`فشل اختبار المعالم الشهرية: ${error.message}`);
+    console.error(error);
   }
 }
 
@@ -297,19 +310,14 @@ async function testWeatherService(db, config, familyId) {
   printSubHeader('اختبار خدمة الطقس اليومية');
 
   try {
-    const service = new DailyWeatherService(db, config);
+    const mockBot = createMockBot(db);
+    const service = new DailyWeatherService(mockBot, config);
 
-    const mockClient = {
-      sendMessage: async (to, message) => {
-        printMessage(`رسالة الطقس إلى ${to}`, message);
-        return true;
-      }
-    };
-
-    await service.sendDailyWeatherUpdates(mockClient);
+    await service.sendDailyWeatherUpdates();
     printSuccess('تم اختبار خدمة الطقس بنجاح');
   } catch (error) {
     printError(`فشل اختبار خدمة الطقس: ${error.message}`);
+    console.error(error);
   }
 }
 
@@ -317,19 +325,14 @@ async function testAnniversaryReminders(db, config, familyId) {
   printSubHeader('اختبار تذكيرات المناسبات');
 
   try {
-    const service = new AnniversaryReminderService(db, config);
+    const mockBot = createMockBot(db);
+    const service = new AnniversaryReminderService(mockBot, config);
 
-    const mockClient = {
-      sendMessage: async (to, message) => {
-        printMessage(`رسالة مناسبة إلى ${to}`, message);
-        return true;
-      }
-    };
-
-    await service.sendDailyAnniversaryReminders(mockClient);
+    await service.checkAndSendReminders();
     printSuccess('تم اختبار تذكيرات المناسبات بنجاح');
   } catch (error) {
     printError(`فشل اختبار المناسبات: ${error.message}`);
+    console.error(error);
   }
 }
 
@@ -337,19 +340,14 @@ async function testMotivationalMessages(db, config, familyId) {
   printSubHeader('اختبار الرسائل التحفيزية');
 
   try {
-    const service = new MotivationalService(db, config);
+    const mockBot = createMockBot(db);
+    const service = new MotivationalService(mockBot, config);
 
-    const mockClient = {
-      sendMessage: async (to, message) => {
-        printMessage(`رسالة تحفيزية إلى ${to}`, message);
-        return true;
-      }
-    };
-
-    await service.sendDailyMotivation(mockClient);
+    await service.sendDailyMotivationToAllFamilies();
     printSuccess('تم اختبار الرسائل التحفيزية بنجاح');
   } catch (error) {
     printError(`فشل اختبار الرسائل التحفيزية: ${error.message}`);
+    console.error(error);
   }
 }
 
@@ -357,19 +355,14 @@ async function testWeekendPlanner(db, config, familyId) {
   printSubHeader('اختبار خطة نهاية الأسبوع');
 
   try {
-    const service = new WeekendPlannerService(db, config);
+    const mockBot = createMockBot(db);
+    const service = new WeekendPlannerService(mockBot, config);
 
-    const mockClient = {
-      sendMessage: async (to, message) => {
-        printMessage(`خطة نهاية الأسبوع إلى ${to}`, message);
-        return true;
-      }
-    };
-
-    await service.generateWeekendPlans(mockClient);
+    await service.generateWeekendPlans();
     printSuccess('تم اختبار خطة نهاية الأسبوع بنجاح');
   } catch (error) {
     printError(`فشل اختبار خطة نهاية الأسبوع: ${error.message}`);
+    console.error(error);
   }
 }
 
@@ -377,19 +370,14 @@ async function testWeeklyReport(db, config, familyId) {
   printSubHeader('اختبار التقرير الأسبوعي');
 
   try {
-    const service = new WeeklyReportService(db, config);
+    const mockBot = createMockBot(db);
+    const service = new WeeklyReportService(mockBot, config);
 
-    const mockClient = {
-      sendMessage: async (to, message) => {
-        printMessage(`التقرير الأسبوعي إلى ${to}`, message);
-        return true;
-      }
-    };
-
-    await service.sendWeeklyReports(mockClient);
+    await service.generateAndSendReports();
     printSuccess('تم اختبار التقرير الأسبوعي بنجاح');
   } catch (error) {
     printError(`فشل اختبار التقرير الأسبوعي: ${error.message}`);
+    console.error(error);
   }
 }
 
@@ -397,19 +385,14 @@ async function testGoalsService(db, config, familyId) {
   printSubHeader('اختبار خدمة الأهداف');
 
   try {
-    const service = new GoalsService(db, config);
+    const mockBot = createMockBot(db);
+    const service = new GoalsService(mockBot, config);
 
-    const mockClient = {
-      sendMessage: async (to, message) => {
-        printMessage(`رسالة أهداف إلى ${to}`, message);
-        return true;
-      }
-    };
-
-    await service.sendGoalReminders(mockClient);
+    await service.sendGoalReminders();
     printSuccess('تم اختبار خدمة الأهداف بنجاح');
   } catch (error) {
     printError(`فشل اختبار خدمة الأهداف: ${error.message}`);
+    console.error(error);
   }
 }
 
