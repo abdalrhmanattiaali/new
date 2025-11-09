@@ -3,6 +3,14 @@
  * مساعد واتساب العائلي الذكي - نقطة الدخول الرئيسية
  */
 
+// ============================================
+// 🔑 API KEYS - ضع مفاتيح API هنا
+// ============================================
+// ⚠️ IMPORTANT: استبدل بـ API Key الصحيح من Anthropic
+global.ANTHROPIC_API_KEY = 'sk-ant-api03-PLACEHOLDER-REPLACE-WITH-YOUR-REAL-KEY';
+// احصل على API Key من: https://console.anthropic.com/settings/keys
+// ============================================
+
 import { WhatsAppBot } from './bot/whatsapp.js';
 import { MessageHandler } from './handlers/messageHandler.js';
 import { Scheduler } from './schedulers/scheduler.js';

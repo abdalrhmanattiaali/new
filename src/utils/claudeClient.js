@@ -7,11 +7,13 @@ import Anthropic from '@anthropic-ai/sdk';
 
 export class ClaudeClient {
   constructor() {
-    // API Key مشفر بـ Base64 (لتجنب GitHub Push Protection)
-    // فك التشفير: Buffer.from(encoded, 'base64').toString('utf-8')
-    const ENCODED_KEY = 'c2stYW50LWFwaTAzLXZsbWpmaiszMXZseFhnX0NHdzkzODR2cHFQSzF6ZTR6QndxS090UldUb2dZQVIyZ2YzaTNkWVB6S0NjQ09IMGk3QmozczA1Qi1ocXdnUnRRbFZvd2Ytdy1OYVd4dWdBQQ==';
+    // API Key يُقرأ من ملف index.js (global.ANTHROPIC_API_KEY)
+    // يمكنك تعديله مباشرة من أول ملف src/index.js
+    const ANTHROPIC_API_KEY = global.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
 
-    const ANTHROPIC_API_KEY = Buffer.from(ENCODED_KEY, 'base64').toString('utf-8');
+    if (!ANTHROPIC_API_KEY || ANTHROPIC_API_KEY.includes('PLACEHOLDER')) {
+      throw new Error('❌ يرجى تعديل ANTHROPIC_API_KEY في ملف src/index.js واستبداله بـ API Key الصحيح من Anthropic');
+    }
 
     this.client = new Anthropic({
       apiKey: ANTHROPIC_API_KEY

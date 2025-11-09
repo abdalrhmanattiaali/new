@@ -3,6 +3,14 @@
  * يعمل بدون WhatsApp Bot لاختبار API Keys والخدمات
  */
 
+// ============================================
+// 🔑 API KEYS - ضع مفاتيح API هنا
+// ============================================
+// ⚠️ IMPORTANT: استبدل بـ API Key الصحيح من Anthropic
+global.ANTHROPIC_API_KEY = 'sk-ant-api03-PLACEHOLDER-REPLACE-WITH-YOUR-REAL-KEY';
+// احصل على API Key من: https://console.anthropic.com/settings/keys
+// ============================================
+
 import { ClaudeClient } from './utils/claudeClient.js';
 import { LLMService } from './ai/llm.js';
 import { DailyWeatherService } from './services/dailyWeatherService.js';
