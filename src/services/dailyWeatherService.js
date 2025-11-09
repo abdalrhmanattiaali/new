@@ -27,8 +27,8 @@ export class DailyWeatherService {
       lon: 31.3667
     };
 
-    // OpenWeatherMap API (مجاني حتى 1000 طلب يومياً)
-    this.weatherApiKey = process.env.OPENWEATHER_API_KEY;
+    // استخدام Open-Meteo API - مجانية 100% بدون API Key
+    // https://open-meteo.com/
   }
 
   /**
@@ -76,64 +76,71 @@ export class DailyWeatherService {
   }
 
   /**
-   * Get weather data from OpenWeatherMap API
+   * Get weather data from Open-Meteo API (مجانية 100%)
    */
   async getWeatherData() {
     try {
-      // Current weather + forecast
-      const currentWeatherUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${this.location.lat}&lon=${this.location.lon}&appid=${this.weatherApiKey}&units=metric&lang=ar`;
+      // Open-Meteo API - مجانية بدون API Key
+      const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${this.location.lat}&longitude=${this.location.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,rain,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m&hourly=precipitation_probability,uv_index&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&timezone=Africa/Cairo&forecast_days=1`;
 
-      const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${this.location.lat}&lon=${this.location.lon}&appid=${this.weatherApiKey}&units=metric&lang=ar`;
+      const response = await axios.get(weatherUrl);
+      const data = response.data;
 
-      const uvUrl = `https://api.openweathermap.org/data/2.5/uvi?lat=${this.location.lat}&lon=${this.location.lon}&appid=${this.weatherApiKey}`;
+      // Current conditions
+      const current = data.current;
+      const daily = data.daily;
+      const hourly = data.hourly;
 
-      const [currentResponse, forecastResponse, uvResponse] = await Promise.all([
-        axios.get(currentWeatherUrl),
-        axios.get(forecastUrl),
-        axios.get(uvUrl)
-      ]);
+      // Get current UV index from hourly data
+      const currentHour = new Date().getHours();
+      const uvIndex = hourly.uv_index[currentHour] || 0;
 
-      const current = currentResponse.data;
-      const forecast = forecastResponse.data;
-      const uv = uvResponse.data;
+      // Calculate rain probability for next 24 hours
+      const rainProb = hourly.precipitation_probability.slice(0, 24);
+      const avgRainProb = Math.round(
+        rainProb.reduce((a, b) => a + (b || 0), 0) / rainProb.length
+      );
+
+      // Get weather description in Arabic
+      const description = this.getWeatherDescription(current.weather_code);
 
       // Extract relevant data
       const weatherData = {
         // Current conditions
-        temperature: Math.round(current.main.temp),
-        feelsLike: Math.round(current.main.feels_like),
-        humidity: current.main.humidity,
-        pressure: current.main.pressure,
+        temperature: Math.round(current.temperature_2m),
+        feelsLike: Math.round(current.apparent_temperature),
+        humidity: current.relative_humidity_2m,
+        pressure: 1013, // Not provided by Open-Meteo free tier
 
         // Weather description
-        description: current.weather[0].description,
-        main: current.weather[0].main,
-        icon: current.weather[0].icon,
+        description: description,
+        main: this.getWeatherMain(current.weather_code),
+        icon: current.weather_code,
 
         // Wind
-        windSpeed: Math.round(current.wind.speed * 3.6), // m/s to km/h
-        windDirection: this.getWindDirection(current.wind.deg),
+        windSpeed: Math.round(current.wind_speed_10m), // already in km/h
+        windDirection: this.getWindDirection(current.wind_direction_10m),
 
-        // Visibility
-        visibility: current.visibility / 1000, // meters to km
+        // Visibility (estimated based on weather code)
+        visibility: this.getVisibility(current.weather_code),
 
         // Clouds & Rain
-        clouds: current.clouds.all,
-        rain: current.rain ? current.rain['1h'] || 0 : 0,
+        clouds: current.cloud_cover,
+        rain: current.rain || 0,
 
         // UV Index
-        uvIndex: uv.value,
+        uvIndex: Math.round(uvIndex),
 
         // Sunrise/Sunset
-        sunrise: new Date(current.sys.sunrise * 1000),
-        sunset: new Date(current.sys.sunset * 1000),
+        sunrise: new Date(daily.sunrise[0]),
+        sunset: new Date(daily.sunset[0]),
 
         // Forecast for rain probability
-        rainProbability: this.getRainProbability(forecast.list),
+        rainProbability: avgRainProb,
 
         // Min/Max for today
-        tempMin: Math.round(current.main.temp_min),
-        tempMax: Math.round(current.main.temp_max)
+        tempMin: Math.round(daily.temperature_2m_min[0]),
+        tempMax: Math.round(daily.temperature_2m_max[0])
       };
 
       return weatherData;
@@ -157,20 +164,59 @@ export class DailyWeatherService {
   }
 
   /**
-   * Calculate rain probability from forecast
+   * Get weather description in Arabic based on WMO code
+   * https://open-meteo.com/en/docs
    */
-  getRainProbability(forecastList) {
-    // Check next 24 hours
-    const next24Hours = forecastList.slice(0, 8); // 8 * 3-hour intervals = 24 hours
+  getWeatherDescription(code) {
+    const descriptions = {
+      0: 'صافٍ تماماً',
+      1: 'صافٍ في الغالب',
+      2: 'غائم جزئياً',
+      3: 'غائم',
+      45: 'ضباب',
+      48: 'ضباب متجمد',
+      51: 'رذاذ خفيف',
+      53: 'رذاذ متوسط',
+      55: 'رذاذ كثيف',
+      61: 'مطر خفيف',
+      63: 'مطر متوسط',
+      65: 'مطر غزير',
+      71: 'ثلج خفيف',
+      73: 'ثلج متوسط',
+      75: 'ثلج كثيف',
+      80: 'زخات مطر خفيفة',
+      81: 'زخات مطر متوسطة',
+      82: 'زخات مطر غزيرة',
+      95: 'عاصفة رعدية',
+      96: 'عاصفة رعدية مع برَد خفيف',
+      99: 'عاصفة رعدية مع برَد كثيف'
+    };
+    return descriptions[code] || 'غير معروف';
+  }
 
-    let rainCount = 0;
-    for (const item of next24Hours) {
-      if (item.weather[0].main === 'Rain' || item.pop > 0.3) {
-        rainCount++;
-      }
-    }
+  /**
+   * Get main weather condition
+   */
+  getWeatherMain(code) {
+    if (code === 0 || code === 1) return 'Clear';
+    if (code === 2 || code === 3) return 'Clouds';
+    if (code >= 45 && code <= 48) return 'Fog';
+    if (code >= 51 && code <= 55) return 'Drizzle';
+    if (code >= 61 && code <= 65) return 'Rain';
+    if (code >= 71 && code <= 75) return 'Snow';
+    if (code >= 80 && code <= 82) return 'Rain';
+    if (code >= 95 && code <= 99) return 'Thunderstorm';
+    return 'Unknown';
+  }
 
-    return Math.round((rainCount / next24Hours.length) * 100);
+  /**
+   * Estimate visibility based on weather code
+   */
+  getVisibility(code) {
+    if (code >= 45 && code <= 48) return 1; // Fog: 1 km
+    if (code >= 51 && code <= 65) return 5; // Rain/Drizzle: 5 km
+    if (code >= 95 && code <= 99) return 3; // Thunderstorm: 3 km
+    return 10; // Clear/Cloudy: 10 km
   }
 
   /**
