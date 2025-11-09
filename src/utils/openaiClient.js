@@ -31,10 +31,10 @@ export class OpenAIClient {
         temperature = 0.7
       } = options;
 
-      const response = await this.client.chat.completions.create({
+      // GPT-5 لا يدعم temperature مخصص - يستخدم القيمة الافتراضية 1 فقط
+      const requestParams = {
         model,
         max_completion_tokens: maxTokens,
-        temperature,
         messages: [
           {
             role: 'system',
@@ -45,7 +45,14 @@ export class OpenAIClient {
             content: userPrompt
           }
         ]
-      });
+      };
+
+      // إضافة temperature فقط للموديلات التي تدعمه (ليس GPT-5)
+      if (!model.startsWith('gpt-5')) {
+        requestParams.temperature = temperature;
+      }
+
+      const response = await this.client.chat.completions.create(requestParams);
 
       return response.choices[0].message.content;
 
@@ -74,12 +81,19 @@ export class OpenAIClient {
         ...messages
       ];
 
-      const response = await this.client.chat.completions.create({
+      // GPT-5 لا يدعم temperature مخصص - يستخدم القيمة الافتراضية 1 فقط
+      const requestParams = {
         model,
         max_completion_tokens: maxTokens,
-        temperature,
         messages: formattedMessages
-      });
+      };
+
+      // إضافة temperature فقط للموديلات التي تدعمه (ليس GPT-5)
+      if (!model.startsWith('gpt-5')) {
+        requestParams.temperature = temperature;
+      }
+
+      const response = await this.client.chat.completions.create(requestParams);
 
       return response.choices[0].message.content;
 

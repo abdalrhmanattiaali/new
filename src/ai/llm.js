@@ -55,10 +55,10 @@ export class LLMService {
     const userPrompt = this.buildPrompt(context);
 
     try {
-      const response = await this.openai.chat.completions.create({
+      // GPT-5 لا يدعم temperature مخصص - يستخدم القيمة الافتراضية 1 فقط
+      const requestParams = {
         model: this.model,
         max_completion_tokens: this.maxTokens,
-        temperature: this.temperature,
         messages: [
           {
             role: 'system',
@@ -69,7 +69,14 @@ export class LLMService {
             content: userPrompt
           }
         ]
-      });
+      };
+
+      // إضافة temperature فقط للموديلات التي تدعمه (ليس GPT-5)
+      if (!this.model.startsWith('gpt-5')) {
+        requestParams.temperature = this.temperature;
+      }
+
+      const response = await this.openai.chat.completions.create(requestParams);
 
       const message = response.choices[0].message.content;
 
@@ -265,10 +272,10 @@ ${additionalContext ? `معلومات إضافية: ${additionalContext}` : ''}
     `.trim();
 
     try {
-      const response = await this.openai.chat.completions.create({
+      // GPT-5 لا يدعم temperature مخصص - يستخدم القيمة الافتراضية 1 فقط
+      const requestParams = {
         model: this.model,
         max_completion_tokens: 800,
-        temperature: this.temperature,
         messages: [
           {
             role: 'system',
@@ -279,7 +286,14 @@ ${additionalContext ? `معلومات إضافية: ${additionalContext}` : ''}
             content: prompt
           }
         ]
-      });
+      };
+
+      // إضافة temperature فقط للموديلات التي تدعمه (ليس GPT-5)
+      if (!this.model.startsWith('gpt-5')) {
+        requestParams.temperature = this.temperature;
+      }
+
+      const response = await this.openai.chat.completions.create(requestParams);
 
       return response.choices[0].message.content;
 
