@@ -20,6 +20,7 @@
     "pm2:startup": "pm2 startup",
     "pm2:save": "pm2 save",
     "test": "node src/test.js",
+    "test:ai": "node src/test-ai.js",
     "test:weather": "node src/test.js weather",
     "test:message": "node src/test.js message",
     "test:weekend": "node src/test.js weekend",
