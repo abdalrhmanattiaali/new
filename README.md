@@ -148,7 +148,7 @@ app:
 
 ai:
   llm:
-    model: "gpt-4o-mini"    # نموذج الذكاء الاصطناعي
+    model: "gpt-5"          # نموذج الذكاء الاصطناعي
     temperature: 0.6        # درجة الإبداع (0-1)
 
 weekend:
@@ -350,7 +350,7 @@ whatsapp-family-ai-assistant/
 - **Node.js**: بيئة التشغيل
 - **whatsapp-web.js**: تكامل واتساب
 - **better-sqlite3**: قاعدة بيانات محلية
-- **OpenAI GPT-4o-mini**: توليد الرسائل الذكية
+- **OpenAI GPT-5**: توليد الرسائل الذكية
 - **node-cron**: الجدولة التلقائية
 - **YAML**: ملف الإعدادات
 - **chokidar**: Hot Reload

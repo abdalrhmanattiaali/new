@@ -26,7 +26,7 @@ export class OpenAIClient {
   async generateText(systemPrompt, userPrompt, options = {}) {
     try {
       const {
-        model = 'gpt-4o-mini',
+        model = 'gpt-5',
         maxTokens = 1024,
         temperature = 0.7
       } = options;
@@ -61,7 +61,7 @@ export class OpenAIClient {
   async generateWithHistory(systemPrompt, messages, options = {}) {
     try {
       const {
-        model = 'gpt-4o-mini',
+        model = 'gpt-5',
         maxTokens = 1024,
         temperature = 0.7
       } = options;
