@@ -57,7 +57,7 @@ export class LLMService {
     try {
       const response = await this.openai.chat.completions.create({
         model: this.model,
-        max_tokens: this.maxTokens,
+        max_completion_tokens: this.maxTokens,
         temperature: this.temperature,
         messages: [
           {
@@ -265,12 +265,15 @@ ${additionalContext ? `معلومات إضافية: ${additionalContext}` : ''}
     `.trim();
 
     try {
-      const response = await this.claude.messages.create({
+      const response = await this.openai.chat.completions.create({
         model: this.model,
-        max_tokens: 800,
+        max_completion_tokens: 800,
         temperature: this.temperature,
-        system: this.systemPrompt,
         messages: [
+          {
+            role: 'system',
+            content: this.systemPrompt
+          },
           {
             role: 'user',
             content: prompt
@@ -278,7 +281,7 @@ ${additionalContext ? `معلومات إضافية: ${additionalContext}` : ''}
         ]
       });
 
-      return response.content[0].text;
+      return response.choices[0].message.content;
 
     } catch (error) {
       console.error('Error generating learning content:', error);
