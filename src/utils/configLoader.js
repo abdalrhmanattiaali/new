@@ -210,7 +210,7 @@ export class ConfigLoader extends EventEmitter {
       'app.timezone',
       'app.language_default',
       'ai.llm.model',
-      'tracks.daily'
+      'tracks.daily_child'
     ];
 
     const missing = [];
