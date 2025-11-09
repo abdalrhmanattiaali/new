@@ -33,7 +33,7 @@ export class LLMService {
 - احترم القيم العائلية والدينية بلطف
     `.trim();
 
-    this.model = config.ai?.llm?.model || 'claude-3-5-sonnet-20241022';
+    this.model = config.ai?.llm?.model || 'claude-3-5-sonnet-20240620';
     this.temperature = config.ai?.llm?.temperature || 0.7;
     this.maxTokens = config.ai?.llm?.max_tokens || 1024;
   }
