@@ -40,14 +40,14 @@ async function testOpenAIClient() {
     console.log('   🔄 إرسال طلب لـ OpenAI ChatGPT API...');
     const startTime = Date.now();
 
-    const response = await claude.generateText(systemPrompt, userPrompt, {
+    const response = await openai.generateText(systemPrompt, userPrompt, {
       maxTokens: 100,
       temperature: 0.7
     });
 
     const duration = Date.now() - startTime;
 
-    console.log('   ✅ تم استلام الرد من Claude!');
+    console.log('   ✅ تم استلام الرد من OpenAI ChatGPT!');
     console.log(`   ⏱️  الوقت: ${duration}ms`);
     console.log(`   📄 الرد: "${response}"\n`);
 
@@ -265,7 +265,7 @@ async function testPerformance() {
     for (let i = 1; i <= 5; i++) {
       const startTime = Date.now();
 
-      await claude.generateText(
+      await openai.generateText(
         'أنت مساعد عائلي.',
         `اكتب نصيحة قصيرة رقم ${i} عن تربية الأطفال (سطر واحد)`,
         { maxTokens: 50 }
