@@ -54,6 +54,11 @@ export class GuardianModel {
     return result.lastInsertRowid;
   }
 
+  static getAll() {
+    const db = getDatabase();
+    return db.prepare('SELECT * FROM guardians').all();
+  }
+
   static getById(id) {
     const db = getDatabase();
     return db.prepare('SELECT * FROM guardians WHERE id = ?').get(id);
