@@ -325,13 +325,26 @@ export class MessageEngine {
     const messageContent = await this.llm.generateMessage(context);
     const buttons = this.config.ui?.buttons || ['تم ✅', 'ذكّرني لاحقاً ⏰'];
 
-    await this.bot.sendMessageWithButtons(
-      guardian.phone_number,
-      messageContent,
-      buttons
-    );
+    // For testing: if no phone number, just print the message
+    if (!guardian.phone_number) {
+      console.log('\n' + '='.repeat(70));
+      console.log(`📱 رسالة لـ: ${guardian.name}`);
+      console.log(`👶 حول: ${child.name}`);
+      console.log(`📝 النوع: ${messageType}`);
+      console.log('='.repeat(70));
+      console.log(messageContent);
+      console.log('\n🔘 الأزرار:');
+      buttons.forEach((btn, i) => console.log(`   ${i + 1}. ${btn}`));
+      console.log('='.repeat(70) + '\n');
+    } else {
+      await this.bot.sendMessageWithButtons(
+        guardian.phone_number,
+        messageContent,
+        buttons
+      );
+    }
 
-    console.log(`✅ Sent instant ${messageType} to ${guardian.name}`);
+    console.log(`✅ Generated instant ${messageType} for ${guardian.name}`);
   }
 
   /**

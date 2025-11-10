@@ -140,6 +140,11 @@ export class WhatsAppBot extends EventEmitter {
       throw new Error('WhatsApp client is not ready');
     }
 
+    if (!to) {
+      console.warn('⚠️ sendMessage called with null/undefined recipient. Skipping...');
+      return false;
+    }
+
     try {
       // Format phone number to WhatsApp format (e.g., 201234567890@c.us)
       const chatId = to.includes('@') ? to : `${to}@c.us`;
@@ -158,6 +163,11 @@ export class WhatsAppBot extends EventEmitter {
   async sendMessageWithButtons(to, text, buttons) {
     if (!this.isReady) {
       throw new Error('WhatsApp client is not ready');
+    }
+
+    if (!to) {
+      console.warn('⚠️ sendMessageWithButtons called with null/undefined recipient. Skipping...');
+      return false;
     }
 
     try {
