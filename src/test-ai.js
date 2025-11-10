@@ -41,7 +41,7 @@ async function testOpenAIClient() {
     const startTime = Date.now();
 
     const response = await openai.generateText(systemPrompt, userPrompt, {
-      maxTokens: 1000,  // GPT-5 needs more tokens for reasoning + output
+      maxTokens: 20000,
       temperature: 0.7
     });
 
@@ -268,7 +268,7 @@ async function testPerformance() {
       await openai.generateText(
         'أنت مساعد عائلي.',
         `اكتب نصيحة قصيرة رقم ${i} عن تربية الأطفال (سطر واحد)`,
-        { maxTokens: 500 }  // GPT-5 needs more tokens even for short responses
+        { maxTokens: 20000 }
       );
 
       const duration = Date.now() - startTime;

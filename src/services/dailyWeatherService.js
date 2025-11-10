@@ -290,7 +290,7 @@ ${weather.rain > 0 ? `💧 كمية المطر: ${weather.rain} مم` : ''}
     try {
       const message = await this.claude.generateText(systemPrompt, userPrompt, {
         temperature: 0.7,
-        maxTokens: 2500  // GPT-5 needs more tokens for reasoning + long response (220-280 words)
+        maxTokens: 20000
       });
 
       return message.trim();

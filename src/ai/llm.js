@@ -305,7 +305,7 @@ ${additionalContext ? `معلومات إضافية: ${additionalContext}` : ''}
       if (this.model.startsWith('gpt-5')) {
         const requestParams = {
           model: this.model,
-          max_output_tokens: 800,
+          max_output_tokens: 20000,
           input: `${this.systemPrompt}\n\n${prompt}`
         };
 
