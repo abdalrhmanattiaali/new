@@ -40,7 +40,22 @@ export class OpenAIClient {
         };
 
         const response = await this.client.responses.create(requestParams);
-        return response.output.content[0].text;
+
+        // Debug: Log the response structure
+        console.log('GPT-5 Response:', JSON.stringify(response, null, 2));
+
+        // Try different possible response structures
+        if (response.output?.content?.[0]?.text) {
+          return response.output.content[0].text;
+        } else if (response.output?.text) {
+          return response.output.text;
+        } else if (response.output) {
+          return response.output;
+        } else if (response.choices?.[0]?.message?.content) {
+          return response.choices[0].message.content;
+        } else {
+          throw new Error('Unknown response structure from GPT-5: ' + JSON.stringify(response));
+        }
       }
 
       // Other models use Chat Completions API (/v1/chat/completions)
