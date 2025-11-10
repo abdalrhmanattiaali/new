@@ -3,6 +3,14 @@
  * مشغّل الاختبارات
  */
 
+// ============================================
+// 🔑 API KEYS - ضع مفاتيح API هنا
+// ============================================
+// ⚠️ IMPORTANT: استبدل بـ API Key الصحيح من OpenAI
+global.OPENAI_API_KEY = 'sk-PLACEHOLDER-REPLACE-WITH-YOUR-REAL-OPENAI-KEY';
+// احصل على API Key من: https://platform.openai.com/api-keys
+// ============================================
+
 import { WhatsAppBot } from './bot/whatsapp.js';
 import { TestPanel } from './utils/testPanel.js';
 import { getConfigLoader } from './utils/configLoader.js';
