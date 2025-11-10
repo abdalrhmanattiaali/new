@@ -379,24 +379,50 @@ ${marriageMsg}
     try {
       db.prepare('BEGIN TRANSACTION').run();
 
-      // 1. Create family
-      const familyStmt = db.prepare(`
-        INSERT INTO families (
-          family_name, family_group_id, send_to_group,
-          marriage_date, onboarding_completed, onboarding_source
-        ) VALUES (?, ?, ?, ?, ?, ?)
-      `);
+      // 1. Check if family already exists (from GroupSyncService)
+      const existingFamily = db.prepare(`
+        SELECT id FROM families WHERE family_group_id = ?
+      `).get(data.groupId);
 
-      const familyResult = familyStmt.run(
-        data.familyName,
-        data.groupId,
-        1, // send_to_group
-        data.marriageDate,
-        1, // onboarding_completed
-        'group'
-      );
+      let familyId;
 
-      const familyId = familyResult.lastInsertRowid;
+      if (existingFamily) {
+        // Update existing family
+        db.prepare(`
+          UPDATE families
+          SET family_name = ?,
+              marriage_date = ?,
+              onboarding_completed = 1,
+              onboarding_source = 'group',
+              updated_at = CURRENT_TIMESTAMP
+          WHERE family_group_id = ?
+        `).run(data.familyName, data.marriageDate, data.groupId);
+
+        familyId = existingFamily.id;
+
+        // Delete existing guardians and children to re-insert fresh data
+        db.prepare('DELETE FROM guardians WHERE family_id = ?').run(familyId);
+        db.prepare('DELETE FROM children WHERE family_id = ?').run(familyId);
+      } else {
+        // Create new family
+        const familyStmt = db.prepare(`
+          INSERT INTO families (
+            family_name, family_group_id, send_to_group,
+            marriage_date, onboarding_completed, onboarding_source
+          ) VALUES (?, ?, ?, ?, ?, ?)
+        `);
+
+        const familyResult = familyStmt.run(
+          data.familyName,
+          data.groupId,
+          1, // send_to_group
+          data.marriageDate,
+          1, // onboarding_completed
+          'group'
+        );
+
+        familyId = familyResult.lastInsertRowid;
+      }
 
       // 2. Create guardians
       const guardianStmt = db.prepare(`
