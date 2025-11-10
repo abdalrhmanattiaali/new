@@ -41,7 +41,7 @@ async function testOpenAIClient() {
     const startTime = Date.now();
 
     const response = await openai.generateText(systemPrompt, userPrompt, {
-      maxTokens: 100,
+      maxTokens: 1000,  // GPT-5 needs more tokens for reasoning + output
       temperature: 0.7
     });
 
