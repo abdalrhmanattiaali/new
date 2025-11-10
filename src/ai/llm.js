@@ -66,7 +66,25 @@ export class LLMService {
         };
 
         const response = await this.openai.responses.create(requestParams);
-        message = response.output.content[0].text;
+
+        // Debug: Log the response structure
+        console.log('GPT-5 Response (from LLMService):', JSON.stringify(response, null, 2));
+
+        // Try different possible response structures
+        if (response.output?.content?.[0]?.text) {
+          message = response.output.content[0].text;
+        } else if (response.output?.text) {
+          message = response.output.text;
+        } else if (typeof response.output === 'string') {
+          message = response.output;
+        } else if (response.choices?.[0]?.message?.content) {
+          message = response.choices[0].message.content;
+        } else if (response.text) {
+          message = response.text;
+        } else {
+          console.error('Unknown response structure from GPT-5:', response);
+          throw new Error('Unknown response structure from GPT-5: ' + JSON.stringify(response));
+        }
       } else {
         // Other models use Chat Completions API
         const requestParams = {
@@ -290,7 +308,25 @@ ${additionalContext ? `معلومات إضافية: ${additionalContext}` : ''}
         };
 
         const response = await this.openai.responses.create(requestParams);
-        return response.output.content[0].text;
+
+        // Debug: Log the response structure
+        console.log('GPT-5 Response (from generateLearningContent):', JSON.stringify(response, null, 2));
+
+        // Try different possible response structures
+        if (response.output?.content?.[0]?.text) {
+          return response.output.content[0].text;
+        } else if (response.output?.text) {
+          return response.output.text;
+        } else if (typeof response.output === 'string') {
+          return response.output;
+        } else if (response.choices?.[0]?.message?.content) {
+          return response.choices[0].message.content;
+        } else if (response.text) {
+          return response.text;
+        } else {
+          console.error('Unknown response structure from GPT-5:', response);
+          throw new Error('Unknown response structure from GPT-5: ' + JSON.stringify(response));
+        }
       }
 
       // Other models use Chat Completions API
