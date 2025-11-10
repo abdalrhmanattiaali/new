@@ -62,12 +62,7 @@ export class LLMService {
         const requestParams = {
           model: this.model,
           max_output_tokens: this.maxTokens,
-          messages: [
-            {
-              role: 'user',
-              content: `${this.systemPrompt}\n\n${userPrompt}`
-            }
-          ]
+          input: `${this.systemPrompt}\n\n${userPrompt}`
         };
 
         const response = await this.openai.responses.create(requestParams);
@@ -291,12 +286,7 @@ ${additionalContext ? `معلومات إضافية: ${additionalContext}` : ''}
         const requestParams = {
           model: this.model,
           max_output_tokens: 800,
-          messages: [
-            {
-              role: 'user',
-              content: `${this.systemPrompt}\n\n${prompt}`
-            }
-          ]
+          input: `${this.systemPrompt}\n\n${prompt}`
         };
 
         const response = await this.openai.responses.create(requestParams);

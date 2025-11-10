@@ -36,12 +36,7 @@ export class OpenAIClient {
         const requestParams = {
           model,
           max_output_tokens: maxTokens,
-          messages: [
-            {
-              role: 'user',
-              content: `${systemPrompt}\n\n${userPrompt}`
-            }
-          ]
+          input: `${systemPrompt}\n\n${userPrompt}`
         };
 
         const response = await this.client.responses.create(requestParams);
@@ -87,16 +82,16 @@ export class OpenAIClient {
 
       // GPT-5 uses Responses API
       if (model.startsWith('gpt-5')) {
-        // Combine system prompt with first user message for GPT-5
-        const formattedMessages = [...messages];
-        if (formattedMessages.length > 0 && formattedMessages[0].role === 'user') {
-          formattedMessages[0].content = `${systemPrompt}\n\n${formattedMessages[0].content}`;
+        // Combine system prompt with messages for GPT-5
+        let combinedInput = systemPrompt;
+        for (const msg of messages) {
+          combinedInput += `\n\n${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`;
         }
 
         const requestParams = {
           model,
           max_output_tokens: maxTokens,
-          messages: formattedMessages
+          input: combinedInput
         };
 
         const response = await this.client.responses.create(requestParams);
