@@ -23,9 +23,28 @@ export class WhatsAppBot extends EventEmitter {
     console.log('🤖 Initializing WhatsApp Bot...');
 
     this.client = new Client({
-      authStrategy: new LocalAuth(),
+      authStrategy: new LocalAuth({
+        clientId: 'family-assistant-main',
+        dataPath: './.wwebjs_auth'
+      }),
       puppeteer: {
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--disable-gpu'
+        ],
+        headless: true
+      },
+      // Increase timeout for stability
+      qrMaxRetries: 5,
+      restartOnAuthFail: true,
+      webVersionCache: {
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
       }
     });
 
@@ -209,6 +228,84 @@ export class WhatsAppBot extends EventEmitter {
     } catch (error) {
       console.error('❌ Error getting chats:', error);
       return [];
+    }
+  }
+
+  /**
+   * Get all WhatsApp groups
+   */
+  async getGroups() {
+    if (!this.isReady) {
+      throw new Error('WhatsApp client is not ready');
+    }
+
+    try {
+      const chats = await this.client.getChats();
+      const groups = chats.filter(chat => chat.isGroup);
+
+      console.log(`✅ Found ${groups.length} WhatsApp groups`);
+
+      return groups.map(group => ({
+        id: group.id._serialized,
+        name: group.name,
+        participantsCount: group.participants ? group.participants.length : 0,
+        isGroup: true
+      }));
+    } catch (error) {
+      console.error('❌ Error getting groups:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Send message to group
+   */
+  async sendMessageToGroup(groupId, text) {
+    if (!this.isReady) {
+      throw new Error('WhatsApp client is not ready');
+    }
+
+    try {
+      await this.client.sendMessage(groupId, text);
+      console.log(`✅ Message sent to group ${groupId}`);
+      return true;
+    } catch (error) {
+      console.error(`❌ Error sending message to group ${groupId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get group info by ID
+   */
+  async getGroupInfo(groupId) {
+    if (!this.isReady) {
+      throw new Error('WhatsApp client is not ready');
+    }
+
+    try {
+      const chat = await this.client.getChatById(groupId);
+
+      if (!chat.isGroup) {
+        throw new Error('This is not a group chat');
+      }
+
+      return {
+        id: chat.id._serialized,
+        name: chat.name,
+        participants: chat.participants.map(p => ({
+          id: p.id._serialized,
+          isAdmin: p.isAdmin,
+          isSuperAdmin: p.isSuperAdmin
+        })),
+        participantsCount: chat.participants.length,
+        description: chat.description || '',
+        createdAt: chat.createdAt,
+        owner: chat.owner ? chat.owner._serialized : null
+      };
+    } catch (error) {
+      console.error(`❌ Error getting group info ${groupId}:`, error);
+      return null;
     }
   }
 

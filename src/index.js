@@ -14,6 +14,7 @@ global.OPENAI_API_KEY = 'sk-PLACEHOLDER-REPLACE-WITH-YOUR-REAL-OPENAI-KEY';
 import { WhatsAppBot } from './bot/whatsapp.js';
 import { MessageHandler } from './handlers/messageHandler.js';
 import { Scheduler } from './schedulers/scheduler.js';
+import { GroupSyncService } from './services/groupSyncService.js';
 import { getConfigLoader } from './utils/configLoader.js';
 import { initDatabase } from './database/init.js';
 import dotenv from 'dotenv';
@@ -28,6 +29,7 @@ class FamilyAssistant {
     this.bot = null;
     this.messageHandler = null;
     this.scheduler = null;
+    this.groupSync = null;
   }
 
   /**
@@ -71,6 +73,26 @@ class FamilyAssistant {
 
       // Wait for bot to be ready
       await this.waitForBot();
+
+      // Initialize Group Sync Service
+      console.log('\n📱 Initializing Group Sync Service...');
+      this.groupSync = new GroupSyncService(this.bot);
+      this.groupSync.initialize();
+
+      // Optimize database for large scale
+      this.groupSync.optimizeDatabase();
+
+      // Sync all WhatsApp groups with database
+      await this.groupSync.syncGroupsFromWhatsApp();
+
+      // Verify registered groups still exist
+      await this.groupSync.verifyRegisteredGroups();
+
+      // Print database summary
+      this.groupSync.printDatabaseSummary();
+
+      // Start auto-sync every 30 minutes
+      this.groupSync.startAutoSync(30);
 
       // Initialize scheduler
       console.log('\n⏰ Initializing scheduler...');
@@ -148,6 +170,12 @@ class FamilyAssistant {
         // Stop scheduler
         if (this.scheduler) {
           this.scheduler.stopAll();
+        }
+
+        // Stop group sync
+        if (this.groupSync) {
+          this.groupSync.stopAutoSync();
+          this.groupSync.close();
         }
 
         // Stop config watcher
