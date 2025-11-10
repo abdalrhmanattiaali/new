@@ -41,21 +41,26 @@ export class OpenAIClient {
 
         const response = await this.client.responses.create(requestParams);
 
-        // Debug: Log the response structure
-        console.log('GPT-5 Response:', JSON.stringify(response, null, 2));
-
-        // Try different possible response structures
-        if (response.output?.content?.[0]?.text) {
-          return response.output.content[0].text;
-        } else if (response.output?.text) {
-          return response.output.text;
-        } else if (response.output) {
-          return response.output;
-        } else if (response.choices?.[0]?.message?.content) {
-          return response.choices[0].message.content;
-        } else {
-          throw new Error('Unknown response structure from GPT-5: ' + JSON.stringify(response));
+        // Primary method: use output_text (available in root of response)
+        if (response.output_text && response.output_text.trim()) {
+          return response.output_text;
         }
+
+        // Fallback: search for message in output array
+        if (response.output && Array.isArray(response.output)) {
+          const messageOutput = response.output.find(item => item.type === 'message');
+          if (messageOutput?.content?.[0]?.text) {
+            return messageOutput.content[0].text;
+          }
+        }
+
+        // If status is incomplete, throw specific error
+        if (response.status === 'incomplete') {
+          const reason = response.incomplete_details?.reason || 'unknown';
+          throw new Error(`GPT-5 response incomplete: ${reason}. Try increasing max_output_tokens.`);
+        }
+
+        throw new Error('No text output from GPT-5: ' + JSON.stringify(response));
       }
 
       // Other models use Chat Completions API (/v1/chat/completions)
@@ -110,7 +115,27 @@ export class OpenAIClient {
         };
 
         const response = await this.client.responses.create(requestParams);
-        return response.output.content[0].text;
+
+        // Primary method: use output_text
+        if (response.output_text && response.output_text.trim()) {
+          return response.output_text;
+        }
+
+        // Fallback: search for message in output array
+        if (response.output && Array.isArray(response.output)) {
+          const messageOutput = response.output.find(item => item.type === 'message');
+          if (messageOutput?.content?.[0]?.text) {
+            return messageOutput.content[0].text;
+          }
+        }
+
+        // If status is incomplete, throw specific error
+        if (response.status === 'incomplete') {
+          const reason = response.incomplete_details?.reason || 'unknown';
+          throw new Error(`GPT-5 response incomplete: ${reason}. Try increasing max_output_tokens.`);
+        }
+
+        throw new Error('No text output from GPT-5: ' + JSON.stringify(response));
       }
 
       // Other models use Chat Completions API

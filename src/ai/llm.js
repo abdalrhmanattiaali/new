@@ -67,23 +67,25 @@ export class LLMService {
 
         const response = await this.openai.responses.create(requestParams);
 
-        // Debug: Log the response structure
-        console.log('GPT-5 Response (from LLMService):', JSON.stringify(response, null, 2));
+        // Primary method: use output_text
+        if (response.output_text && response.output_text.trim()) {
+          message = response.output_text;
+        } else if (response.output && Array.isArray(response.output)) {
+          // Fallback: search for message in output array
+          const messageOutput = response.output.find(item => item.type === 'message');
+          if (messageOutput?.content?.[0]?.text) {
+            message = messageOutput.content[0].text;
+          }
+        }
 
-        // Try different possible response structures
-        if (response.output?.content?.[0]?.text) {
-          message = response.output.content[0].text;
-        } else if (response.output?.text) {
-          message = response.output.text;
-        } else if (typeof response.output === 'string') {
-          message = response.output;
-        } else if (response.choices?.[0]?.message?.content) {
-          message = response.choices[0].message.content;
-        } else if (response.text) {
-          message = response.text;
-        } else {
-          console.error('Unknown response structure from GPT-5:', response);
-          throw new Error('Unknown response structure from GPT-5: ' + JSON.stringify(response));
+        // If status is incomplete, throw specific error
+        if (!message && response.status === 'incomplete') {
+          const reason = response.incomplete_details?.reason || 'unknown';
+          throw new Error(`GPT-5 response incomplete: ${reason}. Try increasing max_output_tokens in config.`);
+        }
+
+        if (!message) {
+          throw new Error('No text output from GPT-5: ' + JSON.stringify(response));
         }
       } else {
         // Other models use Chat Completions API
@@ -309,24 +311,26 @@ ${additionalContext ? `معلومات إضافية: ${additionalContext}` : ''}
 
         const response = await this.openai.responses.create(requestParams);
 
-        // Debug: Log the response structure
-        console.log('GPT-5 Response (from generateLearningContent):', JSON.stringify(response, null, 2));
-
-        // Try different possible response structures
-        if (response.output?.content?.[0]?.text) {
-          return response.output.content[0].text;
-        } else if (response.output?.text) {
-          return response.output.text;
-        } else if (typeof response.output === 'string') {
-          return response.output;
-        } else if (response.choices?.[0]?.message?.content) {
-          return response.choices[0].message.content;
-        } else if (response.text) {
-          return response.text;
-        } else {
-          console.error('Unknown response structure from GPT-5:', response);
-          throw new Error('Unknown response structure from GPT-5: ' + JSON.stringify(response));
+        // Primary method: use output_text
+        if (response.output_text && response.output_text.trim()) {
+          return response.output_text;
         }
+
+        // Fallback: search for message in output array
+        if (response.output && Array.isArray(response.output)) {
+          const messageOutput = response.output.find(item => item.type === 'message');
+          if (messageOutput?.content?.[0]?.text) {
+            return messageOutput.content[0].text;
+          }
+        }
+
+        // If status is incomplete, throw specific error
+        if (response.status === 'incomplete') {
+          const reason = response.incomplete_details?.reason || 'unknown';
+          throw new Error(`GPT-5 response incomplete: ${reason}. Try increasing max_output_tokens.`);
+        }
+
+        throw new Error('No text output from GPT-5: ' + JSON.stringify(response));
       }
 
       // Other models use Chat Completions API

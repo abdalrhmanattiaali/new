@@ -42,7 +42,7 @@ ai:
     provider: "openai"
     model: "gpt-5"  # يستخدم Responses API تلقائياً
     temperature: 0.6  # ملاحظة: GPT-5 لا يدعم temperature (يتجاهل هذه القيمة)
-    max_tokens: 600
+    max_tokens: 2000  # GPT-5 يستخدم جزء من التوكنات للـ reasoning
     system_prompt: |
       أنت مساعد عائلي ذكي وحنون. دورك مساعدة الوالدين في تربية أطفالهم بطريقة صحية ومتوازنة.
       - استخدم لغة بسيطة وواضحة ومختصرة
