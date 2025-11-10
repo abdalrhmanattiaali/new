@@ -21,7 +21,7 @@ export class OpenAIClient {
   }
 
   /**
-   * Generate text using ChatGPT
+   * Generate text using OpenAI (GPT-5 uses Responses API, others use Chat Completions)
    */
   async generateText(systemPrompt, userPrompt, options = {}) {
     try {
@@ -31,10 +31,28 @@ export class OpenAIClient {
         temperature = 0.7
       } = options;
 
-      // GPT-5 لا يدعم temperature مخصص - يستخدم القيمة الافتراضية 1 فقط
+      // GPT-5 uses Responses API (/v1/responses)
+      if (model.startsWith('gpt-5')) {
+        const requestParams = {
+          model,
+          max_output_tokens: maxTokens,
+          messages: [
+            {
+              role: 'user',
+              content: `${systemPrompt}\n\n${userPrompt}`
+            }
+          ]
+        };
+
+        const response = await this.client.responses.create(requestParams);
+        return response.output.content[0].text;
+      }
+
+      // Other models use Chat Completions API (/v1/chat/completions)
       const requestParams = {
         model,
         max_completion_tokens: maxTokens,
+        temperature,
         messages: [
           {
             role: 'system',
@@ -47,13 +65,7 @@ export class OpenAIClient {
         ]
       };
 
-      // إضافة temperature فقط للموديلات التي تدعمه (ليس GPT-5)
-      if (!model.startsWith('gpt-5')) {
-        requestParams.temperature = temperature;
-      }
-
       const response = await this.client.chat.completions.create(requestParams);
-
       return response.choices[0].message.content;
 
     } catch (error) {
@@ -73,6 +85,25 @@ export class OpenAIClient {
         temperature = 0.7
       } = options;
 
+      // GPT-5 uses Responses API
+      if (model.startsWith('gpt-5')) {
+        // Combine system prompt with first user message for GPT-5
+        const formattedMessages = [...messages];
+        if (formattedMessages.length > 0 && formattedMessages[0].role === 'user') {
+          formattedMessages[0].content = `${systemPrompt}\n\n${formattedMessages[0].content}`;
+        }
+
+        const requestParams = {
+          model,
+          max_output_tokens: maxTokens,
+          messages: formattedMessages
+        };
+
+        const response = await this.client.responses.create(requestParams);
+        return response.output.content[0].text;
+      }
+
+      // Other models use Chat Completions API
       const formattedMessages = [
         {
           role: 'system',
@@ -81,20 +112,14 @@ export class OpenAIClient {
         ...messages
       ];
 
-      // GPT-5 لا يدعم temperature مخصص - يستخدم القيمة الافتراضية 1 فقط
       const requestParams = {
         model,
         max_completion_tokens: maxTokens,
+        temperature,
         messages: formattedMessages
       };
 
-      // إضافة temperature فقط للموديلات التي تدعمه (ليس GPT-5)
-      if (!model.startsWith('gpt-5')) {
-        requestParams.temperature = temperature;
-      }
-
       const response = await this.client.chat.completions.create(requestParams);
-
       return response.choices[0].message.content;
 
     } catch (error) {

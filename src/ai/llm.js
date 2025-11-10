@@ -55,30 +55,44 @@ export class LLMService {
     const userPrompt = this.buildPrompt(context);
 
     try {
-      // GPT-5 لا يدعم temperature مخصص - يستخدم القيمة الافتراضية 1 فقط
-      const requestParams = {
-        model: this.model,
-        max_completion_tokens: this.maxTokens,
-        messages: [
-          {
-            role: 'system',
-            content: this.systemPrompt
-          },
-          {
-            role: 'user',
-            content: userPrompt
-          }
-        ]
-      };
+      let message;
 
-      // إضافة temperature فقط للموديلات التي تدعمه (ليس GPT-5)
-      if (!this.model.startsWith('gpt-5')) {
-        requestParams.temperature = this.temperature;
+      // GPT-5 uses Responses API
+      if (this.model.startsWith('gpt-5')) {
+        const requestParams = {
+          model: this.model,
+          max_output_tokens: this.maxTokens,
+          messages: [
+            {
+              role: 'user',
+              content: `${this.systemPrompt}\n\n${userPrompt}`
+            }
+          ]
+        };
+
+        const response = await this.openai.responses.create(requestParams);
+        message = response.output.content[0].text;
+      } else {
+        // Other models use Chat Completions API
+        const requestParams = {
+          model: this.model,
+          max_completion_tokens: this.maxTokens,
+          temperature: this.temperature,
+          messages: [
+            {
+              role: 'system',
+              content: this.systemPrompt
+            },
+            {
+              role: 'user',
+              content: userPrompt
+            }
+          ]
+        };
+
+        const response = await this.openai.chat.completions.create(requestParams);
+        message = response.choices[0].message.content;
       }
-
-      const response = await this.openai.chat.completions.create(requestParams);
-
-      const message = response.choices[0].message.content;
 
       // Safety check
       if (this.containsUnsafeContent(message)) {
@@ -272,10 +286,28 @@ ${additionalContext ? `معلومات إضافية: ${additionalContext}` : ''}
     `.trim();
 
     try {
-      // GPT-5 لا يدعم temperature مخصص - يستخدم القيمة الافتراضية 1 فقط
+      // GPT-5 uses Responses API
+      if (this.model.startsWith('gpt-5')) {
+        const requestParams = {
+          model: this.model,
+          max_output_tokens: 800,
+          messages: [
+            {
+              role: 'user',
+              content: `${this.systemPrompt}\n\n${prompt}`
+            }
+          ]
+        };
+
+        const response = await this.openai.responses.create(requestParams);
+        return response.output.content[0].text;
+      }
+
+      // Other models use Chat Completions API
       const requestParams = {
         model: this.model,
         max_completion_tokens: 800,
+        temperature: this.temperature,
         messages: [
           {
             role: 'system',
@@ -288,13 +320,7 @@ ${additionalContext ? `معلومات إضافية: ${additionalContext}` : ''}
         ]
       };
 
-      // إضافة temperature فقط للموديلات التي تدعمه (ليس GPT-5)
-      if (!this.model.startsWith('gpt-5')) {
-        requestParams.temperature = this.temperature;
-      }
-
       const response = await this.openai.chat.completions.create(requestParams);
-
       return response.choices[0].message.content;
 
     } catch (error) {
