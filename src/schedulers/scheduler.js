@@ -15,6 +15,7 @@ import { AnniversaryReminderService } from '../services/anniversaryReminderServi
 import { ChildDevelopmentService } from '../services/childDevelopmentService.js';
 import { MonthlyMilestoneService } from '../services/monthlyMilestoneService.js';
 import { DailyWeatherService } from '../services/dailyWeatherService.js';
+import { ChildIssueTrackingService } from '../services/childIssueTrackingService.js';
 
 export class Scheduler {
   constructor(bot, config) {
@@ -31,6 +32,7 @@ export class Scheduler {
     this.childDevelopment = new ChildDevelopmentService(bot, config);
     this.monthlyMilestone = new MonthlyMilestoneService(bot, config);
     this.dailyWeather = new DailyWeatherService(bot, config);
+    this.issueTracking = new ChildIssueTrackingService(bot, config);
     this.jobs = [];
   }
 
@@ -162,6 +164,37 @@ export class Scheduler {
       '0 9 * * *',
       'Daily Weather Updates',
       () => this.dailyWeather.sendDailyWeatherUpdates()
+    );
+
+    // === متابعة المشاكل الصحية للأطفال ===
+
+    // Initialize issue tracking service
+    this.issueTracking.initialize();
+
+    // Ask families about child issues (every day at 11:00 PM)
+    this.scheduleJob(
+      '0 23 * * *',
+      'Daily Child Issue Check',
+      () => this.issueTracking.sendDailyIssueCheck()
+    );
+
+    // Send issue reminders (spread throughout the day: 9 AM, 3 PM, 8 PM)
+    this.scheduleJob(
+      '0 9 * * *',
+      'Issue Reminders - Morning',
+      () => this.issueTracking.sendDailyReminders()
+    );
+
+    this.scheduleJob(
+      '0 15 * * *',
+      'Issue Reminders - Afternoon',
+      () => this.issueTracking.sendDailyReminders()
+    );
+
+    this.scheduleJob(
+      '0 20 * * *',
+      'Issue Reminders - Evening',
+      () => this.issueTracking.sendDailyReminders()
     );
 
     console.log(`✅ ${this.jobs.length} scheduled jobs initialized`);

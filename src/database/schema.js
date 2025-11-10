@@ -381,6 +381,46 @@ export const schema = {
       FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE,
       FOREIGN KEY (guardian_id) REFERENCES guardians(id) ON DELETE CASCADE
     )
+  `,
+
+  // جدول متابعة المشاكل الصحية للأطفال
+  child_issues: `
+    CREATE TABLE IF NOT EXISTS child_issues (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      child_id INTEGER NOT NULL,
+      family_id INTEGER NOT NULL,
+      issue_type TEXT NOT NULL, -- 'nutrition', 'sleep', 'health', 'behavior', 'development'
+      issue_title TEXT NOT NULL, -- مثال: "تسطح في الرأس"
+      issue_description TEXT NOT NULL, -- وصف تفصيلي من الأهل
+      severity TEXT DEFAULT 'medium', -- 'low', 'medium', 'high', 'urgent'
+      status TEXT DEFAULT 'active', -- 'active', 'monitoring', 'improving', 'resolved'
+
+      -- AI Generated Treatment Plan
+      ai_diagnosis TEXT, -- تحليل AI للمشكلة
+      treatment_plan TEXT NOT NULL, -- خطة العلاج (JSON)
+      daily_actions TEXT, -- إجراءات يومية مقترحة (JSON array)
+      expected_duration_days INTEGER, -- المدة المتوقعة للحل
+
+      -- Progress Tracking
+      progress_percentage INTEGER DEFAULT 0, -- نسبة التحسن (0-100)
+      progress_notes TEXT, -- ملاحظات التطور (JSON array)
+      last_reminder_sent DATETIME, -- آخر تذكير تم إرساله
+      reminders_per_day INTEGER DEFAULT 3, -- عدد التذكيرات اليومية
+
+      -- Dates
+      reported_date DATE NOT NULL, -- تاريخ الإبلاغ عن المشكلة
+      expected_resolution_date DATE, -- التاريخ المتوقع للحل
+      actual_resolution_date DATE, -- التاريخ الفعلي للحل
+
+      -- Follow-up
+      next_followup_date DATE, -- تاريخ المتابعة القادمة
+      followup_frequency_days INTEGER DEFAULT 7, -- كل كم يوم متابعة
+
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE,
+      FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE
+    )
   `
 };
 
@@ -418,5 +458,12 @@ export const indexes = [
   'CREATE INDEX IF NOT EXISTS idx_anniversary_family ON anniversary_reminders(family_id)',
   'CREATE INDEX IF NOT EXISTS idx_anniversary_type ON anniversary_reminders(reminder_type)',
   'CREATE INDEX IF NOT EXISTS idx_anniversary_date ON anniversary_reminders(anniversary_date)',
-  'CREATE INDEX IF NOT EXISTS idx_family_group ON families(family_group_id)'
+  'CREATE INDEX IF NOT EXISTS idx_family_group ON families(family_group_id)',
+
+  // New indexes for child issues tracking
+  'CREATE INDEX IF NOT EXISTS idx_child_issues_child ON child_issues(child_id)',
+  'CREATE INDEX IF NOT EXISTS idx_child_issues_family ON child_issues(family_id)',
+  'CREATE INDEX IF NOT EXISTS idx_child_issues_status ON child_issues(status)',
+  'CREATE INDEX IF NOT EXISTS idx_child_issues_type ON child_issues(issue_type)',
+  'CREATE INDEX IF NOT EXISTS idx_child_issues_next_followup ON child_issues(next_followup_date)'
 ];
