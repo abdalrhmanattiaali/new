@@ -268,7 +268,7 @@ async function testPerformance() {
       await openai.generateText(
         'أنت مساعد عائلي.',
         `اكتب نصيحة قصيرة رقم ${i} عن تربية الأطفال (سطر واحد)`,
-        { maxTokens: 50 }
+        { maxTokens: 500 }  // GPT-5 needs more tokens even for short responses
       );
 
       const duration = Date.now() - startTime;

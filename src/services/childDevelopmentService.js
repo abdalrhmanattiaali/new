@@ -134,7 +134,7 @@ ${stageInfo.context}
     try {
       const message = await this.claude.generateText(systemPrompt, userPrompt, {
         temperature: 0.9,
-        maxTokens: 800
+        maxTokens: 1500  // GPT-5 needs more tokens for reasoning + output
       });
 
       return message;
@@ -185,7 +185,7 @@ ${stageInfo.nutritionContext}
     try {
       const message = await this.claude.generateText(systemPrompt, userPrompt, {
         temperature: 0.9,
-        maxTokens: 800
+        maxTokens: 1500  // GPT-5 needs more tokens for reasoning + output
       });
 
       return message;

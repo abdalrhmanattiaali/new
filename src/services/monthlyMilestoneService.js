@@ -134,7 +134,7 @@ export class MonthlyMilestoneService {
     try {
       const message = await this.claude.generateText(systemPrompt, userPrompt, {
         temperature: 0.85,
-        maxTokens: 900
+        maxTokens: 1500  // GPT-5 needs more tokens for reasoning + output
       });
 
       return message;

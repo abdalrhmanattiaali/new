@@ -379,7 +379,7 @@ export class AnniversaryReminderService {
         prompt,
         {
           temperature: 0.9,
-          maxTokens: 800
+          maxTokens: 1500  // GPT-5 needs more tokens for reasoning + output
         }
       );
 
@@ -466,7 +466,7 @@ export class AnniversaryReminderService {
         prompt,
         {
           temperature: 0.95,
-          maxTokens: 900
+          maxTokens: 1500  // GPT-5 needs more tokens for reasoning + output
         }
       );
 
