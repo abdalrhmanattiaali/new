@@ -4,7 +4,7 @@
  */
 
 import pkg from 'whatsapp-web.js';
-const { Client, LocalAuth } = pkg;
+const { Client, LocalAuth, MessageMedia } = pkg;
 import qrcode from 'qrcode-terminal';
 import { EventEmitter } from 'events';
 
@@ -184,6 +184,37 @@ export class WhatsAppBot extends EventEmitter {
       return true;
     } catch (error) {
       console.error(`❌ Error sending message with buttons to ${to}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send an audio message or voice note
+   */
+  async sendAudioMessage(to, audioBuffer, filename = 'audio.mp3', caption = '', options = {}) {
+    if (!this.isReady) {
+      throw new Error('WhatsApp client is not ready');
+    }
+
+    if (!to || !audioBuffer) {
+      console.warn('⚠️ sendAudioMessage called with invalid parameters. Skipping...');
+      return false;
+    }
+
+    try {
+      const chatId = to.includes('@') ? to : `${to}@c.us`;
+      const media = new MessageMedia('audio/mpeg', Buffer.from(audioBuffer).toString('base64'), filename);
+
+      const payload = { ...options };
+      if (caption) {
+        payload.caption = caption;
+      }
+
+      await this.client.sendMessage(chatId, media, payload);
+      console.log(`✅ Audio message sent to ${to}`);
+      return true;
+    } catch (error) {
+      console.error(`❌ Error sending audio message to ${to}:`, error);
       throw error;
     }
   }

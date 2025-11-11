@@ -4,6 +4,7 @@
  */
 
 import { getDatabase } from './init.js';
+import { createHash } from 'crypto';
 
 /**
  * Family Model
@@ -152,6 +153,16 @@ export class InteractionModel {
       ORDER BY created_at DESC
       LIMIT ?
     `).all(guardianId, limit);
+  }
+
+  static getByFamily(familyId, limit = 50) {
+    const db = getDatabase();
+    return db.prepare(`
+      SELECT * FROM interactions
+      WHERE family_id = ?
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(familyId, limit);
   }
 
   static getStats(guardianId) {
@@ -367,6 +378,95 @@ export class ScheduledMessageModel {
   }
 }
 
+/**
+ * Child Audio Story Model
+ */
+export class ChildAudioStoryModel {
+  static create({
+    childId,
+    familyId,
+    storyTitle,
+    storySummary = null,
+    storyText,
+    durationSeconds = null,
+    voiceId = null,
+    modelId = null,
+    generatedFor
+  }) {
+    const db = getDatabase();
+
+    const storyHash = createHash('sha256').update(storyText).digest('hex');
+
+    const stmt = db.prepare(`
+      INSERT INTO child_audio_stories (
+        child_id, family_id, story_title, story_summary, story_text,
+        story_hash, duration_seconds, voice_id, model_id, generated_for
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const result = stmt.run(
+      childId,
+      familyId,
+      storyTitle,
+      storySummary,
+      storyText,
+      storyHash,
+      durationSeconds,
+      voiceId,
+      modelId,
+      generatedFor
+    );
+
+    return result.lastInsertRowid;
+  }
+
+  static getByChildAndDate(childId, date) {
+    const db = getDatabase();
+    return db
+      .prepare(
+        `SELECT * FROM child_audio_stories WHERE child_id = ? AND generated_for = ?`
+      )
+      .get(childId, date);
+  }
+
+  static getRecent(childId, { limit = 5, sinceDate = null } = {}) {
+    const db = getDatabase();
+
+    if (sinceDate) {
+      return db
+        .prepare(
+          `SELECT *
+           FROM child_audio_stories
+           WHERE child_id = ? AND generated_for >= ?
+           ORDER BY generated_for DESC
+           LIMIT ?`
+        )
+        .all(childId, sinceDate, limit);
+    }
+
+    return db
+      .prepare(
+        `SELECT *
+         FROM child_audio_stories
+         WHERE child_id = ?
+         ORDER BY generated_for DESC
+         LIMIT ?`
+      )
+      .all(childId, limit);
+  }
+
+  static findByHash(childId, storyText) {
+    const db = getDatabase();
+    const storyHash = createHash('sha256').update(storyText).digest('hex');
+    return db
+      .prepare(
+        `SELECT * FROM child_audio_stories WHERE child_id = ? AND story_hash = ?`
+      )
+      .get(childId, storyHash);
+  }
+}
+
 export default {
   FamilyModel,
   GuardianModel,
@@ -375,5 +475,6 @@ export default {
   AIProfileModel,
   WeekendPlanModel,
   DailyTrackingModel,
-  ScheduledMessageModel
+  ScheduledMessageModel,
+  ChildAudioStoryModel
 };

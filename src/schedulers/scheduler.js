@@ -16,6 +16,7 @@ import { ChildDevelopmentService } from '../services/childDevelopmentService.js'
 import { MonthlyMilestoneService } from '../services/monthlyMilestoneService.js';
 import { DailyWeatherService } from '../services/dailyWeatherService.js';
 import { ChildIssueTrackingService } from '../services/childIssueTrackingService.js';
+import { AudioStoryService } from '../services/audioStoryService.js';
 
 export class Scheduler {
   constructor(bot, config) {
@@ -33,6 +34,7 @@ export class Scheduler {
     this.monthlyMilestone = new MonthlyMilestoneService(bot, config);
     this.dailyWeather = new DailyWeatherService(bot, config);
     this.issueTracking = new ChildIssueTrackingService(bot, config);
+    this.audioStories = null;
     this.jobs = [];
   }
 
@@ -165,6 +167,19 @@ export class Scheduler {
       'Daily Weather Updates',
       () => this.dailyWeather.sendDailyWeatherUpdates()
     );
+
+    // === القصص الصوتية قبل النوم ===
+    if (this.config.audio_stories?.enabled !== false) {
+      this.audioStories = new AudioStoryService(this.bot, this.config);
+      const storyTime = this.config.audio_stories?.send_time || '22:00';
+      const [storyHour, storyMinute] = storyTime.split(':');
+
+      this.scheduleJob(
+        `${storyMinute} ${storyHour} * * *`,
+        'Bedtime Audio Stories',
+        () => this.audioStories.sendDailyAudioStories()
+      );
+    }
 
     // === متابعة المشاكل الصحية للأطفال ===
 

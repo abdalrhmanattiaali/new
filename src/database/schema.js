@@ -421,6 +421,27 @@ export const schema = {
       FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE,
       FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE
     )
+  `,
+
+  // جدول القصص الصوتية للأطفال
+  child_audio_stories: `
+    CREATE TABLE IF NOT EXISTS child_audio_stories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      child_id INTEGER NOT NULL,
+      family_id INTEGER NOT NULL,
+      story_title TEXT NOT NULL,
+      story_summary TEXT,
+      story_text TEXT NOT NULL,
+      story_hash TEXT NOT NULL,
+      duration_seconds INTEGER,
+      voice_id TEXT,
+      model_id TEXT,
+      generated_for DATE NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE,
+      FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE,
+      UNIQUE(child_id, generated_for)
+    )
   `
 };
 
@@ -465,5 +486,10 @@ export const indexes = [
   'CREATE INDEX IF NOT EXISTS idx_child_issues_family ON child_issues(family_id)',
   'CREATE INDEX IF NOT EXISTS idx_child_issues_status ON child_issues(status)',
   'CREATE INDEX IF NOT EXISTS idx_child_issues_type ON child_issues(issue_type)',
-  'CREATE INDEX IF NOT EXISTS idx_child_issues_next_followup ON child_issues(next_followup_date)'
+  'CREATE INDEX IF NOT EXISTS idx_child_issues_next_followup ON child_issues(next_followup_date)',
+
+  // New indexes for audio stories
+  'CREATE INDEX IF NOT EXISTS idx_audio_stories_child ON child_audio_stories(child_id)',
+  'CREATE INDEX IF NOT EXISTS idx_audio_stories_family ON child_audio_stories(family_id)',
+  'CREATE INDEX IF NOT EXISTS idx_audio_stories_date ON child_audio_stories(generated_for)'
 ];

@@ -3,9 +3,10 @@
  * معالج الرسائل الواردة
  */
 
-import { GuardianModel, InteractionModel } from '../database/models.js';
+import { GuardianModel, InteractionModel, ChildModel } from '../database/models.js';
 import { OnboardingService } from '../services/onboarding.js';
 import { GroupOnboardingService } from '../services/groupOnboardingService.js';
+import { ChildIssueTrackingService } from '../services/childIssueTrackingService.js';
 
 export class MessageHandler {
   constructor(bot, config) {
@@ -14,6 +15,41 @@ export class MessageHandler {
     this.onboardingService = new OnboardingService(bot, config);
     this.groupOnboarding = new GroupOnboardingService(bot, config);
     this.userSessions = new Map(); // Track user onboarding sessions
+    this.childIssueService = new ChildIssueTrackingService(bot, config);
+
+    try {
+      this.childIssueService.initialize();
+    } catch (error) {
+      console.warn('MessageHandler: failed to initialize child issue service:', error.message);
+    }
+
+    this.issueKeywords = [
+      'مشكلة',
+      'يتعب',
+      'تعب',
+      'مرض',
+      'مريض',
+      'حرارة',
+      'سخونة',
+      'كحة',
+      'كحه',
+      'يبكي',
+      'يبكى',
+      'يرفض',
+      'ما ياكل',
+      'ماينام',
+      'مش بينام',
+      'صداع',
+      'وجع',
+      'ألم',
+      'الم',
+      'سلوك',
+      'عصبي',
+      'تأخر',
+      'قلق'
+    ];
+
+    this.noIssueKeywords = ['كل شيء تمام', 'كل شىء تمام', 'لا توجد مشاكل', 'ما في مشكلة', 'مفيش مشكلة'];
   }
 
   /**
@@ -332,11 +368,96 @@ ${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marria
     // Log the interaction
     InteractionModel.create(guardian.family_id, guardian.id, 'general', body, null);
 
+    if (await this.detectAndHandleChildIssue(message, guardian)) {
+      return;
+    }
+
     // Send acknowledgment
     await this.bot.sendMessage(
       from,
       'شكراً لرسالتك! أنا هنا لمساعدتك. اكتب "مساعدة" لرؤية ما يمكنني فعله.'
     );
+  }
+
+  /**
+   * Detect if a message contains a child complaint and trigger tracking flow
+   */
+  async detectAndHandleChildIssue(message, guardian) {
+    const body = message.body.trim();
+    if (!body) {
+      return false;
+    }
+
+    const normalized = this.normalizeText(body);
+
+    // Handle explicit "no issues" confirmations
+    if (this.noIssueKeywords.some(keyword => normalized.includes(this.normalizeText(keyword)))) {
+      await this.bot.sendMessage(message.from, 'سعيد لسماع أن كل شيء بخير! ✅ استمروا على هذا المنوال.');
+      return true;
+    }
+
+    const hasIssueKeyword = this.issueKeywords.some(keyword => normalized.includes(this.normalizeText(keyword)));
+    if (!hasIssueKeyword) {
+      return false;
+    }
+
+    const children = ChildModel.getByFamily(guardian.family_id);
+    if (!children.length) {
+      await this.bot.sendMessage(
+        message.from,
+        'التقطت وجود مشكلة ولكن لم أجد بيانات للأطفال في سجلكم بعد. من فضلك أرسل اسم وتاريخ ميلاد الطفل ليتم التتبع الذكي. 👶'
+      );
+      return true;
+    }
+
+    const matchedChild = children.find(child => normalized.includes(this.normalizeText(child.name)));
+
+    if (!matchedChild) {
+      const childNames = children.map(child => child.name).join('، ');
+      await this.bot.sendMessage(
+        message.from,
+        `فهمت أن هناك مشكلة. من فضلك اذكر اسم الطفل بشكل صريح (${childNames}) حتى أستطيع تجهيز خطة متابعة دقيقة. 📝`
+      );
+      return true;
+    }
+
+    try {
+      const result = await this.childIssueService.processIssueReport(
+        guardian.family_id,
+        matchedChild.name,
+        body
+      );
+
+      if (result.success) {
+        await this.bot.sendMessage(
+          message.from,
+          `✅ تم تسجيل المشكلة لطفلك ${matchedChild.name}.\n\n${result.message}\n\nسأرسل لك تذكيرات يومية لمتابعة التحسن. يمكنك الرد بكلمة "تحسن" أو "لا تحسن" لتحديث الحالة.`
+        );
+      } else {
+        await this.bot.sendMessage(
+          message.from,
+          result.message || 'تعذر تسجيل المشكلة حالياً، حاول مرة أخرى لو سمحت.'
+        );
+      }
+    } catch (error) {
+      console.error('Error handling child issue report:', error);
+      await this.bot.sendMessage(
+        message.from,
+        '❌ حدث خطأ أثناء معالجة البلاغ. سأحاول مرة أخرى لاحقاً أو يمكنك إعادة الإرسال.'
+      );
+    }
+
+    return true;
+  }
+
+  normalizeText(text) {
+    return text
+      .toString()
+      .toLowerCase()
+      .replace(/[\u064B-\u0652]/g, '')
+      .replace(/[أإآ]/g, 'ا')
+      .replace(/ة/g, 'ه')
+      .replace(/ى/g, 'ي');
   }
 
   /**

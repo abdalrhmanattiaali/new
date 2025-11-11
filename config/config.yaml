@@ -143,6 +143,18 @@ tracks:
     - checklist
     - quick_tip
 
+# القصص الصوتية اليومية قبل النوم
+audio_stories:
+  enabled: true
+  send_time: "22:00"        # التوقيت المحلي لإرسال القصة
+  voice_id: "haytham-conversation"  # معرف صوت Haytham - Conversation في ElevenLabs (حدثه إذا لزم الأمر)
+  model_id: "eleven_monolingual_v3" # نموذج Eleven v3 (alpha)
+  stability: 0.25            # درجة الاستقرار (0-1)
+  similarity: 0.8            # درجة التقارب مع الصوت الأصلي (0-1)
+  style: "Creative"          # نمط الإلقاء الافتراضي
+  min_gap_days: 1            # عدد الأيام الدنيا قبل إعادة استخدام نفس الفكرة
+  history_days: 14           # عدد الأيام السابقة التي يؤخذ تاريخ القصص منها لتجنب التكرار
+
 # مسار تعلم الوالدين
 parents_learning:
   enabled: true

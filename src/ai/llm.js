@@ -6,6 +6,8 @@
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
 
+import { KnowledgeBase } from './knowledgeBase.js';
+
 dotenv.config();
 
 export class LLMService {
@@ -36,6 +38,10 @@ export class LLMService {
     this.model = config.ai?.llm?.model || 'gpt-5';
     this.temperature = config.ai?.llm?.temperature || 0.7;
     this.maxTokens = config.ai?.llm?.max_tokens || 1024;
+    this.memoryLimit = config.ai?.memory?.max_messages || 50;
+    this.ragConfig = config.ai?.rag || { enabled: false };
+
+    this.knowledgeBase = new KnowledgeBase(config);
   }
 
   /**
@@ -52,7 +58,12 @@ export class LLMService {
       additionalContext
     } = context;
 
-    const userPrompt = this.buildPrompt(context);
+    const { snippets: knowledgeSnippets, hints: knowledgeHints } = await this.retrieveKnowledge(context);
+    const userPrompt = this.buildPrompt({
+      ...context,
+      knowledgeSnippets,
+      knowledgeHints
+    });
 
     try {
       let message;
@@ -133,110 +144,327 @@ export class LLMService {
       childName,
       childAge,
       timeOfDay,
-      additionalContext
+      additionalContext,
+      previousInteractions = [],
+      knowledgeSnippets = [],
+      activeIssues = [],
+      trackMetadata = {},
+      preferredFormat,
+      configFormats = [],
+      knowledgeHints = []
     } = context;
 
     const prompts = {
       child_sleep: `
 اكتب رسالة قصيرة (3-4 أسطر) للوالد/ة ${guardianName} حول روتين النوم لطفلهم ${childName} (عمر ${childAge}).
-الوقت: ${timeOfDay}
-${additionalContext ? `معلومات إضافية: ${additionalContext}` : ''}
+${additionalContext ? `سياق إضافي: ${additionalContext}\n` : ''}
 
-تأكد من:
-- النصيحة عملية وواقعية
-- اللغة دافئة وداعمة
-- النصيحة قصيرة ومباشرة
+ركز على:
+- تهدئة الطفل قبل النوم
+- ربط النوم بعادة محببة
+- نصيحة قابلة للتطبيق الليلة
       `.trim(),
 
       child_nutrition: `
-اكتب رسالة قصيرة (3-4 أسطر) للوالد/ة ${guardianName} حول تغذية طفلهم ${childName} (عمر ${childAge}).
-الوقت: ${timeOfDay}
-${additionalContext ? `معلومات إضافية: ${additionalContext}` : ''}
+اكتب رسالة قصيرة (3-4 أسطر) للوالد/ة ${guardianName} حول تغذية ${childName} (عمر ${childAge}).
+${additionalContext ? `سياق إضافي: ${additionalContext}\n` : ''}
 
-اقترح:
-- وجبة صحية بسيطة أو سناك
-- فكرة لإدخال طعام جديد (إذا مناسب)
-- نصيحة عملية
+تأكد من اقتراح:
+- وجبة أو سناك عملي وسريع التحضير
+- عنصر غذائي يدعم النمو
+- طريقة تشجيع إيجابية للتجربة
       `.trim(),
 
       child_play: `
-اكتب رسالة قصيرة (3-4 أسطر) للوالد/ة ${guardianName} تقترح نشاط لعب هادف (5-10 دقائق) لطفلهم ${childName} (عمر ${childAge}).
-الوقت: ${timeOfDay}
-${additionalContext ? `معلومات إضافية: ${additionalContext}` : ''}
+اقترح نشاط لعب هادف (5-10 دقائق) لـ ${childName} (عمر ${childAge}).
+${additionalContext ? `سياق إضافي: ${additionalContext}\n` : ''}
 
 النشاط يجب أن:
-- يكون بسيط ولا يحتاج تجهيزات معقدة
-- يناسب عمر الطفل
-- يطور مهارة معينة
+- يكون بسيط وقابل للتنفيذ داخل المنزل
+- يطوّر مهارة محددة (حركية، حسية أو اجتماعية)
+- يتضمن خطوة للتقييم أو متابعة التقدّم
       `.trim(),
 
       child_language: `
-اكتب رسالة قصيرة (3-4 أسطر) للوالد/ة ${guardianName} تقترح نشاط لغوي قصير لطفلهم ${childName} (عمر ${childAge}).
-الوقت: ${timeOfDay}
-${additionalContext ? `معلومات إضافية: ${additionalContext}` : ''}
+قدّم نشاط لغة قصير لـ ${childName} (عمر ${childAge}).
+${additionalContext ? `سياق إضافي: ${additionalContext}\n` : ''}
 
-يمكن أن يكون:
-- سؤال للطفل
-- لعبة كلمات بسيطة
-- قصة قصيرة (دقيقتين)
+النشاط يمكن أن يكون:
+- سؤال يفتح حوارًا غنيًا
+- لعبة كلمات أو قافية بسيطة
+- سرد قصة مع مشاركة الطفل
       `.trim(),
 
       parents_mental: `
-اكتب رسالة قصيرة (3-4 أسطر) للوالد/ة ${guardianName} تدعم صحتهم النفسية.
-الوقت: ${timeOfDay}
-${additionalContext ? `معلومات إضافية: ${additionalContext}` : ''}
+اكتب رسالة دعم نفسي قصيرة للوالد/ة ${guardianName}.
+${additionalContext ? `سياق إضافي: ${additionalContext}\n` : ''}
 
-يمكن أن تتضمن:
-- تمرين تنفس بسيط (2-3 دقائق)
-- إعادة صياغة إيجابية لموقف يومي
-- تذكير بإنجاز صغير
+المطلوب:
+- تمرين تنفس أو تهدئة يمكن تنفيذه الآن
+- إعادة تأطير إيجابي لموقف حديث
+- تذكير بإنجاز عائلي أو شخصي
+      `.trim(),
+
+      audio_story: `
+أنت كاتب قصص أطفال قبل النوم. اكتب قصة صوتية مخصصة للطفل ${childName} (${childAge}) لتُقرأ أو تُسجّل مساءً.
+
+المطلوب:
+- اجعل طول النص بين 350 و650 كلمة (مدة 2 إلى 5 دقائق من القراءة الهادئة).
+- استخدم لغة عربية فصحى بسيطة مع جمل قصيرة وتعبيرات حنونة.
+- تضمين مقدمة هادئة، حدث لطيف، ذروة خفيفة، خاتمة مطمئنة.
+- غرس قيمة تربوية أو مهارة سلوكية تناسب العمر.
+- لا تكرر الحبكات أو العناوين المذكورة في الذاكرة أعلاه.
+
+أعد النتيجة بصيغة JSON تحتوي على المفاتيح التالية فقط:
+- "title": عنوان جذاب ومناسب للعمر.
+- "summary": ملخص قصير يشجع على الاستماع.
+- "script": نص القصة الكامل مقسّم إلى فقرات قابلة للقراءة الصوتية.
+- "moral": العبرة أو القيمة المستفادة.
+- "estimated_duration_minutes": رقم بين 2 و5 يقدر مدة القصة عند القراءة الصوتية.
       `.trim(),
 
       weekend_movies: `
-اقترح فيلمين عائليين مناسبين لمشاهدة نهاية الأسبوع.
-العائلة: ${guardianName}
-الطفل: ${childName} (عمر ${childAge})
-${additionalContext ? `تفضيلات: ${additionalContext}` : ''}
+اقترح فيلمين عائليين ملائمين لهذا الأسبوع.
+${additionalContext ? `تفضيلات: ${additionalContext}\n` : ''}
 
-لكل فيلم:
+لكل فيلم اذكر:
 - الاسم بالعربية والإنجليزية
-- سبب الترشيح (سطر واحد)
-- المدة التقريبية
+- سبب الترشيح بأسلوب شخصي
+- مدة الفيلم وملاءمته العمرية
       `.trim(),
 
       weekend_outings: `
-اقترح فكرة خروجة عائلية بسيطة لنهاية الأسبوع.
-العائلة: ${guardianName}
-الطفل: ${childName} (عمر ${childAge})
-${additionalContext ? `معلومات إضافية: ${additionalContext}` : ''}
+اقترح خروجة عائلية بسيطة لنهاية الأسبوع.
+${additionalContext ? `سياق إضافي: ${additionalContext}\n` : ''}
 
-يجب أن تكون:
-- بسيطة وغير مكلفة
-- مدتها حوالي 2-3 ساعات
-- مناسبة للأطفال
+الخطة يجب أن:
+- تراعي ميزانية منخفضة
+- تستغرق 2-3 ساعات
+- تتضمن نشاطًا مشتركًا للأبوين والطفل
       `.trim(),
 
       weekly_report: `
-اكتب ملخص أسبوعي قصير (5-6 أسطر) للعائلة ${guardianName}.
-الطفل: ${childName} (عمر ${childAge})
-${additionalContext ? `البيانات: ${additionalContext}` : ''}
+اكتب ملخص أسبوعي (5-6 أسطر) للعائلة ${guardianName}.
+${additionalContext ? `بيانات داعمة: ${additionalContext}\n` : ''}
 
-يجب أن يتضمن:
-- إنجازات الأسبوع (2-3 نقاط)
-- نقطة للتحسين
-- هدف صغير للأسبوع القادم
-- رسالة تشجيعية
+الملخص يجب أن يحتوي:
+- إنجازات الأسبوع (3 نقاط مختصرة)
+- تحدٍ أو نقطة للتحسين
+- هدف ملموس للأسبوع القادم
+- رسالة تشجيع حارة في الختام
       `.trim(),
 
       default: `
-اكتب رسالة قصيرة (3-4 أسطر) للوالد/ة ${guardianName} حول ${messageType}.
-الطفل: ${childName} (عمر ${childAge})
-الوقت: ${timeOfDay}
-${additionalContext ? `معلومات إضافية: ${additionalContext}` : ''}
+اكتب رسالة قصيرة (3-4 أسطر) للوالد/ة ${guardianName} حول ${messageType} لطفلهم ${childName} (عمر ${childAge}).
+${additionalContext ? `سياق إضافي: ${additionalContext}\n` : ''}
       `.trim()
     };
 
-    return prompts[messageType] || prompts.default;
+    const trackInfoLines = [];
+    if (trackMetadata?.title || trackMetadata?.category) {
+      trackInfoLines.push(`المسار: ${trackMetadata.title || trackMetadata.category}`);
+    }
+    if (trackMetadata?.focus) {
+      trackInfoLines.push(`تركيز المسار: ${trackMetadata.focus}`);
+    }
+    if (trackMetadata?.tone) {
+      trackInfoLines.push(`نبرة الرسالة المفضلة: ${trackMetadata.tone}`);
+    }
+
+    const formatInstruction = this.getFormatInstruction(preferredFormat, configFormats);
+    const memoryBlock = this.formatPreviousInteractions(previousInteractions);
+    const issuesBlock = this.formatActiveIssues(activeIssues);
+    const knowledgeBlock = this.formatKnowledge(knowledgeSnippets);
+
+    const knowledgeHintLine = knowledgeHints?.length
+      ? `كلمات مفتاحية إضافية: ${knowledgeHints.join(', ')}`
+      : '';
+
+    return `
+المعلومات الأساسية:
+- نوع الرسالة: ${messageType}
+- اسم الوالد/ة: ${guardianName}
+- الطفل: ${childName} (العمر التقريبي: ${childAge})
+- توقيت الرسالة: ${timeOfDay}
+${trackInfoLines.length ? `- ${trackInfoLines.join('\n- ')}` : ''}
+${knowledgeHintLine ? `- ${knowledgeHintLine}` : ''}
+
+${formatInstruction ? `تعليمات شكل الإخراج:\n${formatInstruction}\n` : ''}
+
+${issuesBlock ? `التحديات أو المتابعة الحالية:\n${issuesBlock}\n` : 'التحديات أو المتابعة الحالية:\n- لا توجد تحديات مسجلة حالياً'}
+
+${knowledgeBlock ? `معرفة داعمة مختارة:\n${knowledgeBlock}\n` : ''}
+
+ذاكرة المحادثة الأخيرة (${previousInteractions?.length || 0}):
+${memoryBlock}
+
+الرسالة المطلوبة:
+${prompts[messageType] || prompts.default}
+    `.trim();
+  }
+
+  getFormatInstruction(preferredFormat, configFormats = []) {
+    const normalized = preferredFormat || (configFormats?.length ? configFormats[0] : 'text');
+
+    switch (normalized) {
+      case 'audio_story':
+        return '- أعد الناتج بصيغة JSON بالمفاتيح (title, summary, script, moral, estimated_duration_minutes).\n- اجعل النص قابلاً للتسجيل الصوتي المطمئن لمدة 2-5 دقائق.';
+      case 'checklist':
+        return '- قدم الإجابة في شكل قائمة من عناصر قابلة للتنفيذ مع مربعات اختيار.\n- اختم بجملة تشجيعية قصيرة.';
+      case 'audio30':
+        return '- اكتب نصاً موجزاً يصلح لتسجيل صوتي لمدة 30 ثانية.\n- ضع مقترح افتتاحية وجملة ختامية ودليل سرعة الكلام.';
+      case 'quick_tip':
+        return '- وفر نصيحة سريعة في سطر واحد ثم اذكر سبباً داعماً مختصراً.';
+      default:
+        return '- استخدم فقرات قصيرة مع رموز تعبيرية ملائمة إن أمكن.';
+    }
+  }
+
+  formatPreviousInteractions(interactions = []) {
+    if (!Array.isArray(interactions) || interactions.length === 0) {
+      return '- لا توجد تفاعلات سابقة كمرجع.';
+    }
+
+    const trimmed = interactions
+      .slice(0, this.memoryLimit)
+      .map((interaction) => {
+        const date = interaction.created_at
+          ? new Date(interaction.created_at).toLocaleDateString('ar-EG', { weekday: 'short' })
+          : 'سابقاً';
+        const content = this.safeTruncate(interaction.message_content || '', 180);
+        const response = interaction.button_clicked
+          ? ` | استجابة: ${interaction.button_clicked}`
+          : '';
+        return `- [${date}] ${interaction.message_type || 'تفاعل'}: ${content}${response}`;
+      });
+
+    return trimmed.join('\n');
+  }
+
+  formatActiveIssues(activeIssues = []) {
+    if (!Array.isArray(activeIssues) || activeIssues.length === 0) {
+      return '';
+    }
+
+    return activeIssues
+      .slice(0, 5)
+      .map((issue) => {
+        const status = issue.status || 'active';
+        const severity = issue.severity ? `، شدة: ${issue.severity}` : '';
+        const childName = issue.child_name || 'الطفل';
+        const focus = this.safeTruncate(issue.issue_title || issue.treatment_plan || '', 120);
+        return `- ${childName}: ${focus} (حالة: ${status}${severity})`;
+      })
+      .join('\n');
+  }
+
+  formatKnowledge(snippets = []) {
+    if (!Array.isArray(snippets) || snippets.length === 0) {
+      return '';
+    }
+
+    return snippets
+      .map((snippet) => {
+        const summary = this.safeTruncate(snippet.content || '', 200);
+        const source = snippet.source === 'database' ? '📚 قاعدة المعرفة' : '🗂️ ملف محلي';
+        return `- ${source}: ${snippet.title}\n  ${summary}`;
+      })
+      .join('\n');
+  }
+
+  safeTruncate(text, maxLength) {
+    if (!text) return '';
+    if (text.length <= maxLength) return text;
+    return `${text.slice(0, maxLength - 3)}...`;
+  }
+
+  async retrieveKnowledge(context) {
+    try {
+      if (!this.ragConfig?.enabled) {
+        return { snippets: [], hints: [] };
+      }
+
+      const keywords = this.extractKeywords(context);
+      const query = (context.additionalContext && context.additionalContext.trim()) || context.messageType || '';
+      const topK = this.ragConfig.top_k || 3;
+
+      const snippets = this.knowledgeBase.search(query, {
+        keywords,
+        limit: topK
+      });
+
+      return {
+        snippets,
+        hints: keywords.slice(0, 8)
+      };
+    } catch (error) {
+      console.warn('LLMService.retrieveKnowledge error:', error.message);
+      return { snippets: [], hints: [] };
+    }
+  }
+
+  extractKeywords(context) {
+    const keywords = new Set();
+
+    if (context.messageType) {
+      keywords.add(context.messageType.replace(/_/g, ' '));
+    }
+
+    if (context.trackMetadata?.keywords) {
+      context.trackMetadata.keywords.forEach((keyword) => keywords.add(keyword));
+    }
+
+    if (context.childName) {
+      keywords.add(context.childName);
+    }
+
+    const ageStage = this.getAgeStage(context.childAge);
+    if (ageStage) {
+      keywords.add(ageStage);
+    }
+
+    if (context.additionalContext) {
+      const extra = context.additionalContext
+        .toString()
+        .toLowerCase()
+        .split(/[^\w\u0621-\u064A]+/)
+        .filter(Boolean)
+        .slice(0, 6);
+      extra.forEach((word) => keywords.add(word));
+    }
+
+    if (Array.isArray(context.activeIssues)) {
+      context.activeIssues.forEach((issue) => {
+        if (issue.issue_type) keywords.add(issue.issue_type);
+        if (issue.issue_title) keywords.add(issue.issue_title);
+      });
+    }
+
+    if (Array.isArray(context.previousInteractions)) {
+      context.previousInteractions.slice(0, 5).forEach((interaction) => {
+        if (interaction.message_type) keywords.add(interaction.message_type);
+      });
+    }
+
+    return Array.from(keywords).filter(Boolean);
+  }
+
+  getAgeStage(childAge) {
+    if (!childAge) return null;
+    if (typeof childAge === 'string' && childAge.includes('شهر')) {
+      return 'رضيع';
+    }
+
+    const match = childAge.toString().match(/(\d+)/);
+    if (!match) return null;
+
+    const years = parseInt(match[1], 10);
+
+    if (Number.isNaN(years)) return null;
+    if (years < 3) return 'طفل صغير';
+    if (years < 6) return 'ما قبل المدرسة';
+    if (years < 12) return 'مرحلة المدرسة الابتدائية';
+    return 'مراهق مبكر';
   }
 
   /**
@@ -273,6 +501,7 @@ ${additionalContext ? `معلومات إضافية: ${additionalContext}` : ''}
       child_play: 'اللعب مع طفلك 10 دقائق فقط يومياً يصنع فرقاً كبيراً! 🎨',
       child_language: 'تحدث مع طفلك عن يومه، اسأله أسئلة بسيطة واستمع بانتباه. 📚',
       parents_mental: 'خذ نفساً عميقاً... أنت تقوم بعمل رائع! 💙',
+      audio_story: 'اقترح الليلة حكاية جديدة بطابع هادئ تشجع طفلك على الاستماع والمشاركة قبل النوم. 🌙',
       default: 'أنت والد/ة رائع! استمر في المحاولة والتعلم. 💪'
     };
 
