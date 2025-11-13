@@ -254,6 +254,43 @@ export const schema = {
     )
   `,
 
+  // جدول تتبع رسائل الروتين الروحاني
+  spiritual_routine_logs: `
+    CREATE TABLE IF NOT EXISTS spiritual_routine_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      family_id INTEGER NOT NULL,
+      guardian_id INTEGER,
+      routine_id TEXT NOT NULL,
+      scheduled_for DATE NOT NULL,
+      scheduled_message_id INTEGER,
+      delivered INTEGER DEFAULT 0,
+      delivered_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE,
+      FOREIGN KEY (guardian_id) REFERENCES guardians(id) ON DELETE SET NULL,
+      FOREIGN KEY (scheduled_message_id) REFERENCES scheduled_messages(id) ON DELETE SET NULL,
+      UNIQUE(family_id, routine_id, scheduled_for)
+    )
+  `,
+
+  // جدول الطلبات الروحانية المخصصة (ذكاء اصطناعي)
+  spiritual_custom_requests: `
+    CREATE TABLE IF NOT EXISTS spiritual_custom_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      family_id INTEGER NOT NULL,
+      guardian_id INTEGER NOT NULL,
+      child_id INTEGER,
+      request_text TEXT NOT NULL,
+      ai_response TEXT,
+      audio_url TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE,
+      FOREIGN KEY (guardian_id) REFERENCES guardians(id) ON DELETE CASCADE,
+      FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE SET NULL
+    )
+  `,
+
   // جدول أهداف الوالدين
   parent_goals: `
     CREATE TABLE IF NOT EXISTS parent_goals (
@@ -491,5 +528,12 @@ export const indexes = [
   // New indexes for audio stories
   'CREATE INDEX IF NOT EXISTS idx_audio_stories_child ON child_audio_stories(child_id)',
   'CREATE INDEX IF NOT EXISTS idx_audio_stories_family ON child_audio_stories(family_id)',
-  'CREATE INDEX IF NOT EXISTS idx_audio_stories_date ON child_audio_stories(generated_for)'
+  'CREATE INDEX IF NOT EXISTS idx_audio_stories_date ON child_audio_stories(generated_for)',
+
+  // فهارس الروتين الروحاني
+  'CREATE INDEX IF NOT EXISTS idx_spiritual_logs_family ON spiritual_routine_logs(family_id)',
+  'CREATE INDEX IF NOT EXISTS idx_spiritual_logs_routine ON spiritual_routine_logs(routine_id)',
+  'CREATE INDEX IF NOT EXISTS idx_spiritual_logs_date ON spiritual_routine_logs(scheduled_for)',
+  'CREATE INDEX IF NOT EXISTS idx_spiritual_requests_guardian ON spiritual_custom_requests(guardian_id)',
+  'CREATE INDEX IF NOT EXISTS idx_spiritual_requests_family ON spiritual_custom_requests(family_id)'
 ];

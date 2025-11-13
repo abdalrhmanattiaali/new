@@ -147,13 +147,86 @@ tracks:
 audio_stories:
   enabled: true
   send_time: "22:00"        # التوقيت المحلي لإرسال القصة
-  voice_id: "haytham-conversation"  # معرف صوت Haytham - Conversation في ElevenLabs (حدثه إذا لزم الأمر)
+  voice_id: "anouj"         # صوت عربي دافئ (يمكن تغييره من الإعدادات أو متغير البيئة)
   model_id: "eleven_monolingual_v3" # نموذج Eleven v3 (alpha)
   stability: 0.25            # درجة الاستقرار (0-1)
   similarity: 0.8            # درجة التقارب مع الصوت الأصلي (0-1)
   style: "Creative"          # نمط الإلقاء الافتراضي
   min_gap_days: 1            # عدد الأيام الدنيا قبل إعادة استخدام نفس الفكرة
   history_days: 14           # عدد الأيام السابقة التي يؤخذ تاريخ القصص منها لتجنب التكرار
+
+# الروتين الروحاني اليومي
+spiritual_routines:
+  enabled: true
+  schedule_seed_time: "06:10"   # وقت تشغيل عملية الجدولة اليومية
+  voice_id: "anouj"             # نفس صوت القصص الصوتية الافتراضي
+  model_id: "eleven_monolingual_v3"
+  stability: 0.2
+  similarity: 0.82
+  style: "Calm"
+  ai:
+    enabled: true
+    tone: "warm_spiritual"
+    max_custom_history: 20
+  routines:
+    morning_dua:
+      time: "06:45"
+    feeding_dua:
+      time: "11:15"
+    sleep_dua:
+      time: "20:45"
+    daily_ruqyah:
+      time: "09:30"
+    fajr_routine:
+      time: "06:50"
+    adhan_moment:
+      time: "12:55"
+    duha_blessing:
+      time: "09:15"
+    maghrib_hour:
+      time: "17:30"
+    sahabi_story:
+      time: "13:30"
+    family_challenge:
+      time: "09:00"
+      day_of_week: 6          # السبت
+    spiritual_pause:
+      time: "15:00"
+    reflective_question:
+      time: "21:15"
+    friday_blessing:
+      time: "09:30"
+      day_of_week: 5          # الجمعة
+    ramadan_preview:
+      time: "12:00"
+      day_of_month: 20
+    dhikr_song:
+      time: "17:00"
+      day_of_week: 1          # الاثنين
+    dua_speed_challenge:
+      time: "18:15"
+      day_of_week: 3          # الأربعاء
+    dua_tree_activity:
+      time: "10:00"
+      day_of_week: 0          # الأحد
+    dad_voice_message:
+      time: "21:30"
+      day_of_week: 4          # الخميس
+    weekly_dua_calendar:
+      time: "08:30"
+      day_of_week: 0          # الأحد
+    surprise_message:
+      time: "19:15"
+      day_of_month: 25
+    grand_challenge:
+      time: "20:00"
+      day_of_month: 1
+    knowledge_library:
+      time: "11:00"
+      day_of_month: 5
+    golden_advice:
+      time: "20:30"
+      day_of_week: 2          # الثلاثاء
 
 # مسار تعلم الوالدين
 parents_learning:

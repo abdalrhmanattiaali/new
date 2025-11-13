@@ -3,7 +3,14 @@
  * محرك توليد وإرسال الرسائل اليومية
  */
 
-import { FamilyModel, GuardianModel, ChildModel, InteractionModel, ScheduledMessageModel } from '../database/models.js';
+import {
+  FamilyModel,
+  GuardianModel,
+  ChildModel,
+  InteractionModel,
+  ScheduledMessageModel,
+  SpiritualRoutineLogModel
+} from '../database/models.js';
 import { LLMService } from '../ai/llm.js';
 import { WeatherService } from './weatherService.js';
 import { format } from 'date-fns';
@@ -428,8 +435,21 @@ export class MessageEngine {
           console.log(`✅ Sent ${message.message_type} to ${guardian.name}`);
         }
 
+        // Log interaction for follow-up buttons
+        InteractionModel.create(
+          guardian.family_id,
+          guardian.id,
+          message.message_type,
+          this.formatMessageWithButtons(message.message_content, buttons),
+          null
+        );
+
         // Mark as sent
         ScheduledMessageModel.markAsSent(message.id);
+
+        if (message.message_type?.startsWith('spiritual_routine')) {
+          SpiritualRoutineLogModel.markDeliveredByScheduledMessage(message.id);
+        }
 
         // Wait a bit to avoid rate limiting
         await this.sleep(1000);
@@ -438,6 +458,18 @@ export class MessageEngine {
         console.error(`Error sending message ${message.id}:`, error);
       }
     }
+  }
+
+  formatMessageWithButtons(content, buttons = []) {
+    if (!buttons || buttons.length === 0) {
+      return content;
+    }
+
+    const enumerated = buttons
+      .map((button, index) => `${index + 1}. ${button}`)
+      .join('\n');
+
+    return `${content}\n\n${enumerated}`.trim();
   }
 
   /**

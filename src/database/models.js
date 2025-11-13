@@ -467,6 +467,92 @@ export class ChildAudioStoryModel {
   }
 }
 
+/**
+ * Spiritual Routine Log Model
+ */
+export class SpiritualRoutineLogModel {
+  static wasScheduled(familyId, routineId, scheduledFor) {
+    const db = getDatabase();
+    return db
+      .prepare(
+        `SELECT id FROM spiritual_routine_logs WHERE family_id = ? AND routine_id = ? AND scheduled_for = ?`
+      )
+      .get(familyId, routineId, scheduledFor);
+  }
+
+  static logSchedule({ familyId, guardianId = null, routineId, scheduledFor, scheduledMessageId = null }) {
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      INSERT OR IGNORE INTO spiritual_routine_logs (family_id, guardian_id, routine_id, scheduled_for, scheduled_message_id)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(familyId, guardianId, routineId, scheduledFor, scheduledMessageId);
+    return result.lastInsertRowid;
+  }
+
+  static markDeliveredByScheduledMessage(scheduledMessageId) {
+    if (!scheduledMessageId) return;
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      UPDATE spiritual_routine_logs
+      SET delivered = 1, delivered_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE scheduled_message_id = ?
+    `);
+    stmt.run(scheduledMessageId);
+  }
+
+  static getRecentForFamily(familyId, limit = 20) {
+    const db = getDatabase();
+    return db
+      .prepare(
+        `SELECT *
+         FROM spiritual_routine_logs
+         WHERE family_id = ?
+         ORDER BY scheduled_for DESC, created_at DESC
+         LIMIT ?`
+      )
+      .all(familyId, limit);
+  }
+}
+
+/**
+ * Spiritual Custom Request Model
+ */
+export class SpiritualCustomRequestModel {
+  static create({ familyId, guardianId, childId = null, requestText, aiResponse = null, audioUrl = null }) {
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      INSERT INTO spiritual_custom_requests (family_id, guardian_id, child_id, request_text, ai_response, audio_url)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(familyId, guardianId, childId, requestText, aiResponse, audioUrl);
+    return result.lastInsertRowid;
+  }
+
+  static updateResponse(id, aiResponse, audioUrl = null) {
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      UPDATE spiritual_custom_requests
+      SET ai_response = ?, audio_url = ?, created_at = created_at
+      WHERE id = ?
+    `);
+    stmt.run(aiResponse, audioUrl, id);
+  }
+
+  static getRecentByGuardian(guardianId, limit = 10) {
+    const db = getDatabase();
+    return db
+      .prepare(
+        `SELECT *
+         FROM spiritual_custom_requests
+         WHERE guardian_id = ?
+         ORDER BY created_at DESC
+         LIMIT ?`
+      )
+      .all(guardianId, limit);
+  }
+}
+
 export default {
   FamilyModel,
   GuardianModel,
@@ -476,5 +562,7 @@ export default {
   WeekendPlanModel,
   DailyTrackingModel,
   ScheduledMessageModel,
-  ChildAudioStoryModel
+  ChildAudioStoryModel,
+  SpiritualRoutineLogModel,
+  SpiritualCustomRequestModel
 };

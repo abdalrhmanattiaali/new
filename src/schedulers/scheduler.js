@@ -17,6 +17,7 @@ import { MonthlyMilestoneService } from '../services/monthlyMilestoneService.js'
 import { DailyWeatherService } from '../services/dailyWeatherService.js';
 import { ChildIssueTrackingService } from '../services/childIssueTrackingService.js';
 import { AudioStoryService } from '../services/audioStoryService.js';
+import { SpiritualRoutineService } from '../services/spiritualRoutineService.js';
 
 export class Scheduler {
   constructor(bot, config) {
@@ -35,6 +36,7 @@ export class Scheduler {
     this.dailyWeather = new DailyWeatherService(bot, config);
     this.issueTracking = new ChildIssueTrackingService(bot, config);
     this.audioStories = null;
+    this.spiritualRoutine = null;
     this.jobs = [];
   }
 
@@ -179,6 +181,24 @@ export class Scheduler {
         'Bedtime Audio Stories',
         () => this.audioStories.sendDailyAudioStories()
       );
+    }
+
+    // === الأذكار والروتين الروحاني ===
+    if (this.config.spiritual_routines?.enabled !== false) {
+      this.spiritualRoutine = new SpiritualRoutineService(this.bot, this.config);
+      const seedTime = this.config.spiritual_routines?.schedule_seed_time || '06:10';
+      const [seedHour, seedMinute] = seedTime.split(':');
+
+      this.scheduleJob(
+        `${seedMinute} ${seedHour} * * *`,
+        'Schedule Spiritual Routines',
+        () => this.spiritualRoutine.scheduleDailyRoutines()
+      );
+
+      // Run once on startup to cover اليوم الحالي
+      this.spiritualRoutine
+        .scheduleDailyRoutines()
+        .catch((error) => console.error('❌ Failed to schedule spiritual routines:', error));
     }
 
     // === متابعة المشاكل الصحية للأطفال ===

@@ -3,10 +3,11 @@
  * معالج الرسائل الواردة
  */
 
-import { GuardianModel, InteractionModel, ChildModel } from '../database/models.js';
+import { FamilyModel, GuardianModel, InteractionModel, ChildModel } from '../database/models.js';
 import { OnboardingService } from '../services/onboarding.js';
 import { GroupOnboardingService } from '../services/groupOnboardingService.js';
 import { ChildIssueTrackingService } from '../services/childIssueTrackingService.js';
+import { SpiritualRoutineService } from '../services/spiritualRoutineService.js';
 
 export class MessageHandler {
   constructor(bot, config) {
@@ -16,6 +17,7 @@ export class MessageHandler {
     this.groupOnboarding = new GroupOnboardingService(bot, config);
     this.userSessions = new Map(); // Track user onboarding sessions
     this.childIssueService = new ChildIssueTrackingService(bot, config);
+    this.spiritualService = new SpiritualRoutineService(bot, config);
 
     try {
       this.childIssueService.initialize();
@@ -296,8 +298,59 @@ ${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marria
       return;
     }
 
+    if (
+      body.startsWith('/dua') ||
+      body.includes('دعاء جديد') ||
+      body.includes('اكتب دعاء') ||
+      body.includes('اذكار جديدة')
+    ) {
+      await this.handleCustomSpiritualCommand(message, guardian);
+      return;
+    }
+
     // Unknown command
     await this.bot.sendMessage(from, 'عذراً، لم أفهم هذا الأمر. اكتب "مساعدة" لرؤية الأوامر المتاحة.');
+  }
+
+  async handleCustomSpiritualCommand(message, guardian) {
+    const from = message.from;
+    const family = FamilyModel.getById(guardian.family_id);
+    const children = ChildModel.getByFamily(guardian.family_id);
+    const child = children[0] || null;
+
+    const requestText = message.body.replace('/dua', '').trim() || 'دعاء روحاني قصير يعزز الطمأنينة.';
+
+    await this.bot.sendMessage(from, '⏳ لحظة من فضلك... أجهز لك ذكراً جديداً بروح مطمئنة.');
+
+    try {
+      const result = await this.spiritualService.generateCustomContent({
+        guardian,
+        family,
+        child,
+        requestText,
+        type: requestText.includes('قصة') ? 'story' : 'prayer'
+      });
+
+      if (result?.text) {
+        await this.spiritualService.sendCustomContent({
+          guardian,
+          family,
+          text: result.text,
+          buttons: ['تم ✅', 'صوت الشيخ 🎧']
+        });
+      } else {
+        await this.bot.sendMessage(
+          from,
+          'تعذر إنشاء الدعاء الآن، حاول مرة أخرى بعد قليل.'
+        );
+      }
+    } catch (error) {
+      console.error('Error generating custom spiritual content:', error);
+      await this.bot.sendMessage(
+        from,
+        'حدث خطأ غير متوقع أثناء إنشاء الذكر. أعد المحاولة في وقت لاحق.'
+      );
+    }
   }
 
   /**
@@ -317,20 +370,33 @@ ${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marria
     const lastInteraction = interactions[0];
 
     // Map button response
-    const buttonMap = {
-      '1': 'تم ✅',
-      '2': 'ذكّرني لاحقاً ⏰',
-      '3': 'بدّل التوقيت 🔄',
-      '4': 'أرسل صوت 30ث 🎤',
-      '5': 'تخطي ⏭️',
-      'تم': 'تم ✅',
-      'ذكرني': 'ذكّرني لاحقاً ⏰',
-      'بدل': 'بدّل التوقيت 🔄',
-      'صوت': 'أرسل صوت 30ث 🎤',
-      'تخطي': 'تخطي ⏭️'
-    };
+    const availableButtons = this.extractButtonsFromInteraction(lastInteraction.message_content);
+    let buttonClicked = body;
 
-    const buttonClicked = buttonMap[body] || body;
+    if (/^\d+$/.test(body)) {
+      const index = parseInt(body, 10) - 1;
+      if (availableButtons[index]) {
+        buttonClicked = availableButtons[index];
+      }
+    } else {
+      const normalizedBody = this.normalizeText(body);
+      const synonyms = [
+        { match: ['تم', 'done'], value: 'تم ✅' },
+        { match: ['ذكرني', 'remind'], value: 'ذكّرني لاحقاً ⏰' },
+        { match: ['بدل', 'توقيت'], value: 'بدّل التوقيت 🔄' },
+        { match: ['صوت', 'شيخ'], value: 'صوت الشيخ 🎧' },
+        { match: ['دعاء', 'اضافي'], value: 'علّمني دعاء تاني 📿' },
+        { match: ['قصة', 'حكاية'], value: 'قصة تانية بكرة 📖' },
+        { match: ['تخطي', 'skip'], value: 'تخطي ⏭️' }
+      ];
+
+      for (const synonym of synonyms) {
+        if (synonym.match.some((word) => normalizedBody.includes(this.normalizeText(word)))) {
+          buttonClicked = synonym.value;
+          break;
+        }
+      }
+    }
 
     // Update interaction
     const responseTime = Math.floor((Date.now() - new Date(lastInteraction.created_at).getTime()) / 1000);
@@ -344,17 +410,106 @@ ${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marria
    * Handle specific button actions
    */
   async handleButtonAction(from, guardian, buttonClicked, interaction) {
-    if (buttonClicked === 'تم ✅') {
+    const normalized = this.normalizeText(buttonClicked);
+
+    if (
+      buttonClicked === 'تم ✅' ||
+      buttonClicked === 'دعوتم ✅' ||
+      buttonClicked === 'رقيناه ✅' ||
+      buttonClicked === 'بدأنا ✅' ||
+      buttonClicked === 'طبّقنا ✅' ||
+      buttonClicked === 'حمدنا الله ✅' ||
+      buttonClicked === 'استمعت ✅'
+    ) {
       await this.bot.sendMessage(from, 'رائع! تم تسجيل استجابتك 👍');
-    } else if (buttonClicked.includes('ذكّرني')) {
+      return;
+    }
+
+    if (normalized.includes('ذكرني') && normalized.includes('صباح')) {
+      await this.bot.sendMessage(from, 'تم تثبيت تذكير الصباح لهذا الذكر. 🔔');
+      return;
+    }
+
+    if (buttonClicked.includes('ذكّرني')) {
       await this.bot.sendMessage(from, 'حسناً، سأذكرك بعد ساعة ⏰');
-      // TODO: Schedule reminder
-    } else if (buttonClicked.includes('بدّل')) {
+      return;
+    }
+
+    if (buttonClicked.includes('بدّل')) {
       await this.bot.sendMessage(from, 'ما هو الوقت المفضل لك؟ (صباح/ظهر/مساء)');
-    } else if (buttonClicked.includes('صوت')) {
-      await this.bot.sendMessage(from, 'ميزة الصوت ستكون متاحة قريباً 🎤');
-    } else if (buttonClicked.includes('تخطي')) {
+      return;
+    }
+
+    if (buttonClicked.includes('صوت الشيخ')) {
+      const family = FamilyModel.getById(guardian.family_id);
+      await this.spiritualService.sendRoutineAudio({
+        guardian,
+        family,
+        routineId: interaction.message_type,
+        messageContent: this.cleanInteractionMessage(interaction.message_content)
+      });
+      return;
+    }
+
+    if (buttonClicked.includes('علّمني دعاء') || buttonClicked.includes('أرسل أدعية إضافية')) {
+      await this.generateFollowUpSpiritualContent(from, guardian, interaction, buttonClicked, 'prayer');
+      return;
+    }
+
+    if (buttonClicked.includes('قصة تانية')) {
+      await this.generateFollowUpSpiritualContent(from, guardian, interaction, buttonClicked, 'story');
+      return;
+    }
+
+    if (buttonClicked.includes('أرسل أغنية')) {
+      await this.generateFollowUpSpiritualContent(
+        from,
+        guardian,
+        interaction,
+        buttonClicked,
+        'story',
+        'أغنية أذكار جديدة مرحة تناسب الطفل'
+      );
+      return;
+    }
+
+    if (buttonClicked.includes('ذكروني')) {
+      await this.bot.sendMessage(from, 'تم تدوين طلب التذكير الشهري 🤲');
+      return;
+    }
+
+    if (buttonClicked.includes('عرض الإحصائيات')) {
+      await this.bot.sendMessage(
+        from,
+        '📊 جاري تجهيز إحصائيات الدعوات، سأرسلها لكم قريباً.'
+      );
+      return;
+    }
+
+    if (buttonClicked.includes('حمّل التقويم')) {
+      await this.bot.sendMessage(
+        from,
+        '📥 سيتم إرسال رابط التقويم الأسبوعي على شكل PDF قريباً.'
+      );
+      return;
+    }
+
+    if (buttonClicked.includes('تصفح المكتبة')) {
+      await this.bot.sendMessage(
+        from,
+        '📚 سأرسل لكم روابط المكتبة الإلكترونية خلال اليوم.'
+      );
+      return;
+    }
+
+    if (buttonClicked.includes('تحدي تاني')) {
+      await this.bot.sendMessage(from, '💪 تحدٍ جديد قيد التحضير لليوم التالي!');
+      return;
+    }
+
+    if (buttonClicked.includes('تخطي')) {
       await this.bot.sendMessage(from, 'تم التخطي ✓');
+      return;
     }
   }
 
@@ -369,6 +524,14 @@ ${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marria
     InteractionModel.create(guardian.family_id, guardian.id, 'general', body, null);
 
     if (await this.detectAndHandleChildIssue(message, guardian)) {
+      return;
+    }
+
+    if (await this.detectSpiritualAudioRequest(message, guardian)) {
+      return;
+    }
+
+    if (await this.detectCustomSpiritualRequest(message, guardian)) {
       return;
     }
 
@@ -448,6 +611,152 @@ ${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marria
     }
 
     return true;
+  }
+
+  async detectSpiritualAudioRequest(message, guardian) {
+    const body = message.body.trim();
+    if (!body) return false;
+
+    const normalized = this.normalizeText(body);
+    if (!normalized.includes('صوت') && !normalized.includes('شيخ')) {
+      return false;
+    }
+
+    const routineId = this.spiritualService.matchRoutineByKeyword(body);
+    if (!routineId) {
+      return false;
+    }
+
+    const family = FamilyModel.getById(guardian.family_id);
+    await this.bot.sendMessage(message.from, '🎧 لحظة من فضلك... أحضّر النسخة الصوتية.');
+    await this.spiritualService.sendRoutineAudio({
+      guardian,
+      family,
+      routineId: `spiritual_routine:${routineId}`,
+      messageContent: null
+    });
+    return true;
+  }
+
+  async detectCustomSpiritualRequest(message, guardian) {
+    const body = message.body.trim();
+    if (!body) return false;
+
+    const normalized = this.normalizeText(body);
+    const wantsNewPrayer =
+      normalized.includes('دعاء') &&
+      (normalized.includes('جديد') || normalized.includes('تاني') || normalized.includes('اضاف'));
+    const wantsStory =
+      normalized.includes('قصة') &&
+      (normalized.includes('جديد') || normalized.includes('تاني') || normalized.includes('بكره'));
+
+    if (!wantsNewPrayer && !wantsStory) {
+      return false;
+    }
+
+    const family = FamilyModel.getById(guardian.family_id);
+    const children = ChildModel.getByFamily(guardian.family_id);
+    const child = children[0] || null;
+    const type = wantsStory ? 'story' : 'prayer';
+
+    await this.bot.sendMessage(message.from, '✍️ جاري إعداد محتوى روحاني جديد لكم.');
+
+    try {
+      const result = await this.spiritualService.generateCustomContent({
+        guardian,
+        family,
+        child,
+        requestText: body,
+        type
+      });
+
+      if (result?.text) {
+        await this.spiritualService.sendCustomContent({
+          guardian,
+          family,
+          text: result.text,
+          buttons: ['تم ✅', 'صوت الشيخ 🎧']
+        });
+      } else {
+        await this.bot.sendMessage(
+          message.from,
+          'تعذر إنشاء المحتوى الآن، حاولوا مرة أخرى بعد قليل.'
+        );
+      }
+    } catch (error) {
+      console.error('Error generating custom spiritual request:', error);
+      await this.bot.sendMessage(
+        message.from,
+        'حدث خطأ غير متوقع أثناء إنشاء الذكر. أعد المحاولة في وقت لاحق.'
+      );
+    }
+
+    return true;
+  }
+
+  async generateFollowUpSpiritualContent(
+    from,
+    guardian,
+    interaction,
+    buttonClicked,
+    type = 'prayer',
+    hint = ''
+  ) {
+    const family = FamilyModel.getById(guardian.family_id);
+    const children = ChildModel.getByFamily(guardian.family_id);
+    const child = children[0] || null;
+    const baseMessage = this.cleanInteractionMessage(interaction.message_content);
+    const requestText = hint || `${buttonClicked} - محتوى مرتبط بالرسالة التالية:\n${baseMessage}`;
+
+    await this.bot.sendMessage(from, '⏳ لحظة... أجهز استكمالاً ملهماً لهذا الذكر.');
+
+    try {
+      const result = await this.spiritualService.generateCustomContent({
+        guardian,
+        family,
+        child,
+        requestText,
+        type
+      });
+
+      if (result?.text) {
+        await this.spiritualService.sendCustomContent({
+          guardian,
+          family,
+          text: result.text,
+          buttons: ['تم ✅', 'صوت الشيخ 🎧']
+        });
+      } else {
+        await this.bot.sendMessage(
+          from,
+          'لم أتمكن من إنشاء محتوى إضافي الآن. حاول مرة أخرى لاحقاً.'
+        );
+      }
+    } catch (error) {
+      console.error('Error generating follow-up spiritual content:', error);
+      await this.bot.sendMessage(
+        from,
+        'حدث خطأ أثناء إنشاء المحتوى الإضافي. أعد المحاولة لاحقاً.'
+      );
+    }
+  }
+
+  cleanInteractionMessage(content) {
+    if (!content) return '';
+    return content
+      .split('\n')
+      .filter(line => !/^\d+\.\s+/.test(line.trim()))
+      .join('\n')
+      .trim();
+  }
+
+  extractButtonsFromInteraction(content) {
+    if (!content) return [];
+    return content
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => /^\d+\.\s+/.test(line))
+      .map(line => line.replace(/^\d+\.\s+/, '').trim());
   }
 
   normalizeText(text) {
