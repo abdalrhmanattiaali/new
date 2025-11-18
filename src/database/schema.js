@@ -515,6 +515,50 @@ export const schema = {
       FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE,
       FOREIGN KEY (guardian_id) REFERENCES guardians(id) ON DELETE CASCADE
     )
+  `,
+
+  // جلسات المحادثة التفاعلية
+  conversation_sessions: `
+    CREATE TABLE IF NOT EXISTS conversation_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      family_id INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      topic TEXT,
+      status TEXT DEFAULT 'open',
+      participants TEXT, -- JSON array of guardian ids
+      metadata TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE
+    )
+  `,
+
+  conversation_messages: `
+    CREATE TABLE IF NOT EXISTS conversation_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL,
+      author_type TEXT NOT NULL, -- guardian, assistant, system
+      guardian_id INTEGER,
+      message_content TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (session_id) REFERENCES conversation_sessions(id) ON DELETE CASCADE,
+      FOREIGN KEY (guardian_id) REFERENCES guardians(id) ON DELETE SET NULL
+    )
+  `,
+
+  interactive_notifications: `
+    CREATE TABLE IF NOT EXISTS interactive_notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      family_id INTEGER NOT NULL,
+      guardian_id INTEGER,
+      topic TEXT,
+      ai_reason TEXT,
+      message_text TEXT,
+      decision_payload TEXT,
+      sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE,
+      FOREIGN KEY (guardian_id) REFERENCES guardians(id) ON DELETE SET NULL
+    )
   `
 };
 
@@ -578,5 +622,12 @@ export const indexes = [
   'CREATE INDEX IF NOT EXISTS idx_spiritual_logs_routine ON spiritual_routine_logs(routine_id)',
   'CREATE INDEX IF NOT EXISTS idx_spiritual_logs_date ON spiritual_routine_logs(scheduled_for)',
   'CREATE INDEX IF NOT EXISTS idx_spiritual_requests_guardian ON spiritual_custom_requests(guardian_id)',
-  'CREATE INDEX IF NOT EXISTS idx_spiritual_requests_family ON spiritual_custom_requests(family_id)'
+  'CREATE INDEX IF NOT EXISTS idx_spiritual_requests_family ON spiritual_custom_requests(family_id)',
+
+  // فهارس المحادثات والإشعارات التفاعلية
+  'CREATE INDEX IF NOT EXISTS idx_conversations_family ON conversation_sessions(family_id)',
+  'CREATE INDEX IF NOT EXISTS idx_conversations_status ON conversation_sessions(status)',
+  'CREATE INDEX IF NOT EXISTS idx_conversation_messages_session ON conversation_messages(session_id)',
+  'CREATE INDEX IF NOT EXISTS idx_interactive_notifications_family ON interactive_notifications(family_id)',
+  'CREATE INDEX IF NOT EXISTS idx_interactive_notifications_sent_at ON interactive_notifications(sent_at)'
 ];

@@ -179,6 +179,140 @@ export class InteractionModel {
 }
 
 /**
+ * Conversation Session Model
+ */
+export class ConversationSessionModel {
+  static create({ familyId, type, topic = null, participants = [], metadata = {} }) {
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      INSERT INTO conversation_sessions (family_id, type, topic, participants, metadata)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(
+      familyId,
+      type,
+      topic,
+      JSON.stringify(participants || []),
+      JSON.stringify(metadata || {})
+    );
+    return this.getById(result.lastInsertRowid);
+  }
+
+  static updateMetadata(id, metadata = {}) {
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      UPDATE conversation_sessions
+      SET metadata = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+    stmt.run(JSON.stringify(metadata || {}), id);
+    return this.getById(id);
+  }
+
+  static updateParticipants(id, participants = []) {
+    const db = getDatabase();
+    db.prepare(`
+      UPDATE conversation_sessions
+      SET participants = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(JSON.stringify(participants || []), id);
+  }
+
+  static updateStatus(id, status = 'closed') {
+    const db = getDatabase();
+    db.prepare(`
+      UPDATE conversation_sessions
+      SET status = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(status, id);
+  }
+
+  static touch(id) {
+    const db = getDatabase();
+    db.prepare(`
+      UPDATE conversation_sessions
+      SET updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(id);
+  }
+
+  static getById(id) {
+    const db = getDatabase();
+    return db.prepare('SELECT * FROM conversation_sessions WHERE id = ?').get(id);
+  }
+
+  static getOpenByFamily(familyId) {
+    const db = getDatabase();
+    return db.prepare(`
+      SELECT * FROM conversation_sessions
+      WHERE family_id = ? AND status = 'open'
+      ORDER BY updated_at DESC
+    `).all(familyId);
+  }
+}
+
+/**
+ * Conversation Messages Model
+ */
+export class ConversationMessageModel {
+  static log({ sessionId, authorType, guardianId = null, message }) {
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      INSERT INTO conversation_messages (session_id, author_type, guardian_id, message_content)
+      VALUES (?, ?, ?, ?)
+    `);
+    stmt.run(sessionId, authorType, guardianId, message);
+  }
+
+  static getBySession(sessionId, limit = 50) {
+    const db = getDatabase();
+    return db.prepare(`
+      SELECT * FROM conversation_messages
+      WHERE session_id = ?
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(sessionId, limit);
+  }
+}
+
+/**
+ * Interactive Notification Model
+ */
+export class InteractiveNotificationModel {
+  static log({ familyId, guardianId = null, topic = null, aiReason = null, messageText = null, payload = {} }) {
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      INSERT INTO interactive_notifications (family_id, guardian_id, topic, ai_reason, message_text, decision_payload)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(familyId, guardianId, topic, aiReason, messageText, JSON.stringify(payload || {}));
+  }
+
+  static countForFamilyToday(familyId) {
+    const db = getDatabase();
+    const row = db.prepare(`
+      SELECT COUNT(*) as total
+      FROM interactive_notifications
+      WHERE family_id = ? AND DATE(sent_at) = DATE('now', 'localtime')
+    `).get(familyId);
+    return row?.total || 0;
+  }
+
+  static lastSentWithinMinutes(familyId, minutes = 60) {
+    const db = getDatabase();
+    const row = db.prepare(`
+      SELECT sent_at FROM interactive_notifications
+      WHERE family_id = ?
+      ORDER BY sent_at DESC
+      LIMIT 1
+    `).get(familyId);
+    if (!row?.sent_at) return false;
+    const sent = new Date(row.sent_at).getTime();
+    return Date.now() - sent < minutes * 60 * 1000;
+  }
+}
+
+/**
  * AI Profile Model
  */
 export class AIProfileModel {

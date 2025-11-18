@@ -458,7 +458,7 @@ const DAILY_SLOTS = [
     title: 'دعاء النوم وختام اليوم',
     time: '22:00',
     audience: 'family',
-    buttons: ['دعاء الختام ✅', 'صوت الشيخ 🎧'],
+    buttons: ['دعاء الختام ✅', 'ذكّرني لاحقاً ⏰'],
     keywords: ['دعاء النوم', 'رقية', 'ختام اليوم', 'طمأنة'],
     promptLines: [
       'قدّم أدعية النوم الأساسية مع قراءة المعوذات والنفث برفق وذكر اسم الطفل.',
@@ -1299,13 +1299,14 @@ export class SpiritualRoutineService {
   /**
    * Send custom content directly to the guardian or family group
    */
-  async sendCustomContent({ guardian, family, text, buttons = ['تم ✅', 'صوت الشيخ 🎧'] }) {
+  async sendCustomContent({ guardian, family, text, buttons = null }) {
     const target = this.getTargetRecipient(family, guardian);
     if (!target) {
       throw new Error('Target recipient not found for custom content');
     }
 
-    await this.bot.sendMessageWithButtons(target, text, buttons);
+    const resolvedButtons = buttons || this.config?.ui?.buttons || ['تم ✅', 'ذكّرني لاحقاً ⏰', 'بدّل التوقيت 🔄', 'تخطي ⏭️'];
+    await this.bot.sendMessageWithButtons(target, text, resolvedButtons);
   }
 
   /**

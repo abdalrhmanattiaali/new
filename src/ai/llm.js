@@ -134,6 +134,26 @@ export class LLMService {
     }
   }
 
+  async generateDialogueExchange(context) {
+    const prompt = this.buildDialoguePrompt(context);
+    const raw = await this.runModel(prompt, 900);
+    const parsed = this.extractJSON(raw);
+    if (!parsed) {
+      throw new Error('Dialogue response missing JSON payload');
+    }
+    return parsed;
+  }
+
+  async evaluateInteractiveNotification(context) {
+    const prompt = this.buildInteractiveDecisionPrompt(context);
+    const raw = await this.runModel(prompt, 800);
+    const parsed = this.extractJSON(raw);
+    if (!parsed) {
+      throw new Error('Interactive notification decision missing JSON payload');
+    }
+    return parsed;
+  }
+
   /**
    * Build prompt based on message type
    */
@@ -365,6 +385,135 @@ ${memoryBlock}
 الرسالة المطلوبة:
 ${prompts[messageType] || prompts.default}
     `.trim();
+  }
+
+  buildDialoguePrompt(context) {
+    const {
+      sessionType,
+      topic,
+      guardianName,
+      guardianRole,
+      participants = [],
+      latestMessage,
+      childSnapshot = [],
+      history = [],
+      coupleInsights = [],
+      activeIssues = [],
+      channel,
+      interactions = []
+    } = context;
+
+    const historyLines = history
+      .map((entry) => `${entry.author_type || 'guardian'}: ${entry.message_content}`)
+      .join('\n');
+
+    const participantsText = participants
+      .map((p) => `${p.name || 'غير معروف'} (${p.role || 'guardian'})`)
+      .join(', ');
+
+    const childDetails = childSnapshot
+      .map((child) => `${child.name} - ${child.birth_date || 'بدون تاريخ'}${child.stage ? ` (${child.stage})` : ''}`)
+      .join('; ');
+
+    const issues = activeIssues
+      .map((issue) => `${issue.issue_title || issue.issue_type} (${issue.status})`)
+      .join(' | ');
+
+    const sentiments = coupleInsights
+      .map((entry) => `${entry.sentiment}: +${entry.positives_text || '—'} / -${entry.challenges_text || '—'}`)
+      .join(' || ');
+
+    const recentInteractions = interactions
+      .map((interaction) => `${interaction.message_type || 'message'} => ${interaction.message_content?.slice(0, 80) || ''}`)
+      .join('\n');
+
+    return `أنت وسيط حوارات زوجية وأبوية ذكي. المطلوب هو الرد على الرسالة الأخيرة بطريقة حنونة وعملية، مع ربط الحديث بسياق العائلة.
+
+نوع الجلسة: ${sessionType}
+الموضوع: ${topic || 'غير محدد'}
+القناة: ${channel}
+المشاركون: ${participantsText || 'غير متوفر'}
+الطفل/الأطفال: ${childDetails || 'غير مسجل'}
+المشاكل النشطة: ${issues || 'لا يوجد'}
+ملاحظات العلاقة: ${sentiments || 'لا يوجد'}
+أحدث التفاعلات النصية: ${recentInteractions || 'لا يوجد'}
+
+سجل المحادثة:
+${historyLines || 'لا يوجد'}
+
+رسالة ${guardianName} (${guardianRole}): ${latestMessage}
+
+أجب دائماً بصيغة JSON بهذا الشكل:
+{
+  "reply": "النص الرئيسي الذي سيرسَل للزوجين",
+  "follow_up": "سؤال متابعة قصير إن وجد، أو null",
+  "close_session": false
+}`;
+  }
+
+  buildInteractiveDecisionPrompt(context) {
+    const { familyName, guardians = [], children = [], coupleNotes = [], issues = [], openSessions = [], config = {} } = context;
+
+    const guardianText = guardians.map((g) => `${g.name} (${g.role})`).join(', ');
+    const childText = children.map((child) => `${child.name} (${child.development_stage || 'غير محدد'})`).join(', ');
+    const issuesText = issues.map((issue) => `${issue.issue_title} - ${issue.status}`).join(' | ');
+    const coupleText = coupleNotes.map((note) => `${note.sentiment}: +${note.positives_text || ''} / -${note.challenges_text || ''}`).join(' || ');
+    const sessionsText = openSessions.map((session) => `${session.type}:${session.topic || 'عام'}`).join(', ');
+
+    return `أنت مساعد مسؤول عن اتخاذ قرار ذكي بخصوص إرسال إشعار إضافي لعائلة ${familyName}.
+المتاح:
+- الأوصياء: ${guardianText}
+- الأطفال: ${childText || 'لا يوجد'}
+- المشاكل الحالية: ${issuesText || 'لا يوجد'}
+- ملاحظات العلاقة: ${coupleText || 'لا يوجد'}
+- جلسات مفتوحة: ${sessionsText || 'لا يوجد'}
+- تفضيلات المواضيع: ${(config.topics || []).join(', ')}
+
+أصدر قراراً واحداً بصيغة JSON:
+{
+  "send": true أو false,
+  "reason": "لماذا هذا الوقت مناسب",
+  "topic": "تعريف مختصر",
+  "sessionType": "child_issue" أو "couple_feedback" أو "parent_support" أو "interactive_notification",
+  "target": "father" أو "mother" أو "both",
+  "urgency": "low"|"medium"|"high",
+  "message": "النص العربي الذي سنرسله",
+  "follow_up_hint": "ما الذي يجب مراقبته لاحقاً"
+}`;
+  }
+
+  async runModel(prompt, maxTokens = 512) {
+    if (this.model.startsWith('gpt-5')) {
+      const response = await this.openai.responses.create({
+        model: this.model,
+        max_output_tokens: maxTokens,
+        input: `${this.systemPrompt}\n\n${prompt}`
+      });
+      return response.output_text || (response.output?.[0]?.content?.[0]?.text ?? '');
+    }
+
+    const completion = await this.openai.chat.completions.create({
+      model: this.model,
+      temperature: this.temperature,
+      max_completion_tokens: maxTokens,
+      messages: [
+        { role: 'system', content: this.systemPrompt },
+        { role: 'user', content: prompt }
+      ]
+    });
+    return completion.choices?.[0]?.message?.content || '';
+  }
+
+  extractJSON(text) {
+    if (!text) return null;
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    try {
+      return JSON.parse(match[0]);
+    } catch (error) {
+      console.warn('LLMService: failed to parse JSON payload', error.message);
+      return null;
+    }
   }
 
   getFormatInstruction(preferredFormat, configFormats = []) {

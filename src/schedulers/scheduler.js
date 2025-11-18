@@ -21,6 +21,7 @@ import { SpiritualRoutineService } from '../services/spiritualRoutineService.js'
 import { ParentResourceService } from '../services/parentResourceService.js';
 import { WeeklyMilestoneCheckpointService } from '../services/weeklyMilestoneCheckpointService.js';
 import { CoupleInsightService } from '../services/coupleInsightService.js';
+import { InteractiveNotificationService } from '../services/interactiveNotificationService.js';
 
 export class Scheduler {
   constructor(bot, config) {
@@ -43,6 +44,7 @@ export class Scheduler {
     this.parentResources = new ParentResourceService(bot, config);
     this.weeklyMilestones = new WeeklyMilestoneCheckpointService(bot, config);
     this.coupleInsights = null;
+    this.interactiveNotifications = new InteractiveNotificationService(bot, config);
     this.jobs = [];
   }
 
@@ -186,6 +188,13 @@ export class Scheduler {
       '0 8 * * *',
       'Child Development Messages',
       () => this.childDevelopment.sendDailyDevelopmentMessages()
+    );
+
+    const interactiveCron = this.config.interactive_notifications?.cron || '15 * * * *';
+    this.scheduleJob(
+      interactiveCron,
+      'Interactive Notification Scan',
+      () => this.interactiveNotifications.evaluateAndDispatch()
     );
 
     if (this.config.celebrations?.child_monthly?.enabled !== false) {

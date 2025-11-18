@@ -12,12 +12,14 @@ import {
 } from '../database/models.js';
 import { getDatabase } from '../database/init.js';
 import { LLMService } from '../ai/llm.js';
+import InteractiveDialogueService from './interactiveDialogueService.js';
 
 export class CoupleInsightService {
   constructor(bot, config) {
     this.bot = bot;
     this.config = config;
     this.llm = new LLMService(config);
+    this.dialogue = new InteractiveDialogueService(bot, config);
   }
 
   async sendPrompts(focus = 'checkin') {
@@ -83,6 +85,14 @@ export class CoupleInsightService {
             this.buildButtons(focus)
           );
           InteractionModel.create(family.id, guardian.id, messageType, message, null);
+          const session = this.dialogue.ensureSession({
+            familyId: family.id,
+            type: 'couple_feedback',
+            topic: focus,
+            participants: guardians.map((member) => member.id),
+            metadata: { prompt: messageType, focus }
+          });
+          await this.dialogue.appendAssistantMessage(session, message);
           await this.sleep(500);
         } catch (error) {
           console.error(`CoupleInsightService: failed to send to ${guardian.phone_number}`, error);

@@ -14,6 +14,7 @@ import { OnboardingService } from '../services/onboarding.js';
 import { GroupOnboardingService } from '../services/groupOnboardingService.js';
 import { ChildIssueTrackingService } from '../services/childIssueTrackingService.js';
 import { SpiritualRoutineService } from '../services/spiritualRoutineService.js';
+import InteractiveDialogueService from '../services/interactiveDialogueService.js';
 
 export class MessageHandler {
   constructor(bot, config) {
@@ -24,6 +25,7 @@ export class MessageHandler {
     this.userSessions = new Map(); // Track user onboarding sessions
     this.childIssueService = new ChildIssueTrackingService(bot, config);
     this.spiritualService = new SpiritualRoutineService(bot, config);
+    this.dialogueService = new InteractiveDialogueService(bot, config);
 
     try {
       this.childIssueService.initialize();
@@ -346,7 +348,7 @@ ${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marria
           guardian,
           family,
           text: result.text,
-          buttons: ['تم ✅', 'صوت الشيخ 🎧']
+          buttons: this.config.ui?.buttons || ['تم ✅', 'ذكّرني لاحقاً ⏰', 'بدّل التوقيت 🔄', 'تخطي ⏭️']
         });
       } else {
         await this.bot.sendMessage(
@@ -394,7 +396,6 @@ ${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marria
         { match: ['تم', 'done'], value: 'تم ✅' },
         { match: ['ذكرني', 'remind'], value: 'ذكّرني لاحقاً ⏰' },
         { match: ['بدل', 'توقيت'], value: 'بدّل التوقيت 🔄' },
-        { match: ['صوت', 'شيخ'], value: 'صوت الشيخ 🎧' },
         { match: ['دعاء', 'اضافي'], value: 'علّمني دعاء تاني 📿' },
         { match: ['قصة', 'حكاية'], value: 'قصة تانية بكرة 📖' },
         { match: ['تخطي', 'skip'], value: 'تخطي ⏭️' }
@@ -447,17 +448,6 @@ ${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marria
 
     if (buttonClicked.includes('بدّل')) {
       await this.bot.sendMessage(from, 'ما هو الوقت المفضل لك؟ (صباح/ظهر/مساء)');
-      return;
-    }
-
-    if (buttonClicked.includes('صوت الشيخ')) {
-      const family = FamilyModel.getById(guardian.family_id);
-      await this.spiritualService.sendRoutineAudio({
-        guardian,
-        family,
-        routineId: interaction.message_type,
-        messageContent: this.cleanInteractionMessage(interaction.message_content)
-      });
       return;
     }
 
@@ -551,6 +541,10 @@ ${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marria
     const from = message.from;
     const body = message.body;
 
+    if (await this.handleActiveConversation(message, guardian)) {
+      return;
+    }
+
     // Log the interaction
     InteractionModel.create(guardian.family_id, guardian.id, 'general', body, null);
 
@@ -559,10 +553,6 @@ ${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marria
     }
 
     if (await this.detectAndHandleChildIssue(message, guardian)) {
-      return;
-    }
-
-    if (await this.detectSpiritualAudioRequest(message, guardian)) {
       return;
     }
 
@@ -575,6 +565,18 @@ ${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marria
       from,
       'شكراً لرسالتك! أنا هنا لمساعدتك. اكتب "مساعدة" لرؤية ما يمكنني فعله.'
     );
+  }
+
+  async handleActiveConversation(message, guardian) {
+    const body = message.body?.trim();
+    if (!body) return false;
+
+    const session = this.dialogueService.getActiveSessionForGuardian(guardian);
+    if (!session) return false;
+
+    await this.dialogueService.recordGuardianMessage(session, guardian, body);
+    await this.dialogueService.respond(session, guardian, body, { channel: session.type });
+    return true;
   }
 
   async detectCoupleFeedback(message, guardian) {
@@ -624,10 +626,17 @@ ${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marria
       source: 'whatsapp'
     });
 
-    await this.bot.sendMessage(
-      message.from,
-      '💌 تم حفظ رسالتك بسرية، وسأضبط رسائل الذكاء الاصطناعي لتراعي ما شاركته.'
-    );
+    const guardians = GuardianModel.getByFamily(guardian.family_id) || [];
+    const session = this.dialogueService.ensureSession({
+      familyId: guardian.family_id,
+      type: 'couple_feedback',
+      topic: 'weekly_checkin',
+      participants: guardians.map(member => member.id),
+      metadata: { sentiment }
+    });
+
+    await this.dialogueService.recordGuardianMessage(session, guardian, body);
+    await this.dialogueService.respond(session, guardian, body, { channel: 'couple_feedback' });
 
     return true;
   }
@@ -682,10 +691,19 @@ ${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marria
       );
 
       if (result.success) {
-        await this.bot.sendMessage(
-          message.from,
-          `✅ تم تسجيل المشكلة لطفلك ${matchedChild.name}.\n\n${result.message}\n\nسأرسل لك تذكيرات يومية لمتابعة التحسن. يمكنك الرد بكلمة "تحسن" أو "لا تحسن" لتحديث الحالة.`
-        );
+        const responseText = `✅ تم تسجيل المشكلة لطفلك ${matchedChild.name}.\n\n${result.message}\n\nسأرسل لك تذكيرات يومية لمتابعة التحسن. يمكنك الرد بكلمة "تحسن" أو "لا تحسن" لتحديث الحالة.`;
+        await this.bot.sendMessage(message.from, responseText);
+
+        const guardians = GuardianModel.getByFamily(guardian.family_id) || [];
+        const session = this.dialogueService.ensureSession({
+          familyId: guardian.family_id,
+          type: 'child_issue',
+          topic: `issue_${result.issueId || matchedChild.name}`,
+          participants: guardians.map(member => member.id),
+          metadata: { issueId: result.issueId, child: matchedChild.name }
+        });
+        await this.dialogueService.recordGuardianMessage(session, guardian, body);
+        await this.dialogueService.appendAssistantMessage(session, responseText);
       } else {
         await this.bot.sendMessage(
           message.from,
@@ -700,31 +718,6 @@ ${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marria
       );
     }
 
-    return true;
-  }
-
-  async detectSpiritualAudioRequest(message, guardian) {
-    const body = message.body.trim();
-    if (!body) return false;
-
-    const normalized = this.normalizeText(body);
-    if (!normalized.includes('صوت') && !normalized.includes('شيخ')) {
-      return false;
-    }
-
-    const routineId = this.spiritualService.matchRoutineByKeyword(body);
-    if (!routineId) {
-      return false;
-    }
-
-    const family = FamilyModel.getById(guardian.family_id);
-    await this.bot.sendMessage(message.from, '🎧 لحظة من فضلك... أحضّر النسخة الصوتية.');
-    await this.spiritualService.sendRoutineAudio({
-      guardian,
-      family,
-      routineId: `spiritual_routine:${routineId}`,
-      messageContent: null
-    });
     return true;
   }
 
@@ -765,7 +758,7 @@ ${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marria
           guardian,
           family,
           text: result.text,
-          buttons: ['تم ✅', 'صوت الشيخ 🎧']
+          buttons: this.config.ui?.buttons || ['تم ✅', 'ذكّرني لاحقاً ⏰', 'بدّل التوقيت 🔄', 'تخطي ⏭️']
         });
       } else {
         await this.bot.sendMessage(
@@ -850,7 +843,7 @@ ${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marria
           guardian,
           family,
           text: result.text,
-          buttons: ['تم ✅', 'صوت الشيخ 🎧']
+          buttons: this.config.ui?.buttons || ['تم ✅', 'ذكّرني لاحقاً ⏰', 'بدّل التوقيت 🔄', 'تخطي ⏭️']
         });
       } else {
         await this.bot.sendMessage(
@@ -954,8 +947,7 @@ ${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marria
 1️⃣ تم: تأكيد إتمام المهمة
 2️⃣ ذكّرني لاحقاً: تأجيل التذكير
 3️⃣ بدّل التوقيت: تغيير وقت الرسائل
-4️⃣ أرسل صوت 30ث: استماع للمحتوى
-5️⃣ تخطي: تخطي هذه الرسالة
+4️⃣ تخطي: تجاوز الرسالة إذا لم تكن مناسبة الآن
 
 لأي استفسار، أرسل رسالتك وسأكون سعيداً بالمساعدة!
     `.trim();
@@ -1000,8 +992,8 @@ ${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marria
    * Check if message is a button response
    */
   isButtonResponse(body) {
-    const buttonKeywords = ['تم', 'ذكرني', 'بدل', 'صوت', 'تخطي'];
-    return /^[1-5]$/.test(body) || buttonKeywords.some(kw => body.includes(kw));
+    const buttonKeywords = ['تم', 'ذكرني', 'بدل', 'تخطي'];
+    return /^[1-4]$/.test(body) || buttonKeywords.some(kw => body.includes(kw));
   }
 }
 

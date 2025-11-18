@@ -343,7 +343,6 @@ parents_learning:
   # خيارات التفاعل
   interaction_buttons:
     - "نص سريع"
-    - "صوت 30ث"
     - "احفظ للويكند"
 
 # تخطيط نهاية الأسبوع
@@ -420,7 +419,6 @@ parent_resources:
     buttons:
       - "أضف للقائمة ✅"
       - "ذكرني لاحقاً ⏰"
-      - "أرسل نسخة صوتية 🎧"
   courses:
     day: "Sun"
     time: "21:00"
@@ -454,13 +452,25 @@ couple_feedback:
     - "احتاج أفضفض 📝"
     - "أشارك لاحقاً ⏰"
 
+# الإشعارات التفاعلية (يقررها الذكاء الاصطناعي)
+interactive_notifications:
+  enabled: true
+  cron: "15 * * * *"        # تفحص كل ساعة عند الدقيقة 15
+  max_per_day: 3             # حد أقصى لكل عائلة خلال 24 ساعة
+  min_gap_minutes: 90        # أقل فترة بين إشعارين تفاعليين للعائلة
+  topics:
+    - "child_issue"
+    - "couple_care"
+    - "parent_support"
+  tone: "empathetic"
+
 # الاحتفالات الدورية
 celebrations:
   birthdays:
     enabled: true
     check_time: "06:00"
     advance_days: 2
-    friendly_closing: "🎁 فكرة لطيفة: حضّروا بطاقة أو تسجيل صوتي قصير ووصلوه لصاحب العيد اليوم."
+    friendly_closing: "🎁 فكرة لطيفة: حضّروا بطاقة أو رسالة مكتوبة ووصلوها لصاحب العيد اليوم."
   marriage:
     enabled: true
     advance_days: 5
@@ -512,7 +522,6 @@ ui:
     - "تم ✅"
     - "ذكّرني لاحقاً ⏰"
     - "بدّل التوقيت 🔄"
-    - "أرسل صوت 30ث 🎤"
     - "تخطي ⏭️"
 
   # أزرار التتبع السريع
