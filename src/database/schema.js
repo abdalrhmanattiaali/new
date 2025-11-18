@@ -152,9 +152,24 @@ export const schema = {
       checklist TEXT, -- JSON array of checklist items
       home_alternative TEXT, -- JSON object
       sent INTEGER DEFAULT 0,
+      preview_sent INTEGER DEFAULT 0,
       feedback TEXT, -- JSON: which were selected/done
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE
+    )
+  `,
+
+  // سجل ترشيحات الموارد للوالدين
+  parent_resource_logs: `
+    CREATE TABLE IF NOT EXISTS parent_resource_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      family_id INTEGER NOT NULL,
+      resource_type TEXT NOT NULL, -- book, course_father, course_mother
+      title TEXT,
+      metadata TEXT, -- JSON
+      sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE
     )
   `,
@@ -492,6 +507,8 @@ export const indexes = [
   'CREATE INDEX IF NOT EXISTS idx_interactions_family ON interactions(family_id)',
   'CREATE INDEX IF NOT EXISTS idx_interactions_guardian ON interactions(guardian_id)',
   'CREATE INDEX IF NOT EXISTS idx_weekend_family ON weekend_plans(family_id)',
+  'CREATE INDEX IF NOT EXISTS idx_weekend_week ON weekend_plans(week_start_date)',
+  'CREATE INDEX IF NOT EXISTS idx_resource_family_type ON parent_resource_logs(family_id, resource_type)',
   'CREATE INDEX IF NOT EXISTS idx_learning_guardian ON learning_track(guardian_id)',
   'CREATE INDEX IF NOT EXISTS idx_vaccines_child ON vaccines(child_id)',
   'CREATE INDEX IF NOT EXISTS idx_tracking_child ON daily_tracking(child_id)',

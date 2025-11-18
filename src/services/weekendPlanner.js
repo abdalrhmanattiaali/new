@@ -5,7 +5,8 @@
 
 import { FamilyModel, GuardianModel, ChildModel, WeekendPlanModel } from '../database/models.js';
 import { LLMService } from '../ai/llm.js';
-import { format, startOfWeek, addDays } from 'date-fns';
+import { format, startOfWeek } from 'date-fns';
+import { getDatabase } from '../database/init.js';
 
 export class WeekendPlannerService {
   constructor(bot, config) {
@@ -112,12 +113,13 @@ export class WeekendPlannerService {
     const guardians = GuardianModel.getByFamily(family.id);
     if (guardians.length === 0) return;
 
-    const movies = JSON.parse(plan.movies);
-    const outings = JSON.parse(plan.outings);
-    const checklist = JSON.parse(plan.checklist);
-    const homeAlternative = JSON.parse(plan.home_alternative);
+    const movies = this.safeJsonParse(plan.movies, []);
+    const outings = this.safeJsonParse(plan.outings, []);
+    const checklist = this.safeJsonParse(plan.checklist, []);
+    const homeAlternative = this.safeJsonParse(plan.home_alternative, { activities: [] });
 
-    const message = this.formatWeekendMessage(movies, outings, checklist, homeAlternative);
+    const issues = this.getActiveIssuesSummary(family.id);
+    const message = this.formatWeekendMessage(movies, outings, checklist, homeAlternative, issues);
 
     // Send to all guardians
     for (const guardian of guardians) {
@@ -149,21 +151,9 @@ export class WeekendPlannerService {
 
     try {
       const suggestions = await this.llm.generateMessage(context);
-
-      // Parse suggestions into structured format
-      return [
-        {
-          title: 'فيلم عائلي مقترح 1',
-          reason: suggestions.split('\n')[0] || 'فيلم ممتع للعائلة',
-          duration: '90 دقيقة'
-        },
-        {
-          title: 'فيلم عائلي مقترح 2',
-          reason: suggestions.split('\n')[1] || 'مناسب للأطفال',
-          duration: '100 دقيقة'
-        }
-      ];
-
+      const parsed = this.parseStructuredList(suggestions, config.count || 2, 'movie');
+      if (parsed.length) return parsed;
+      return this.getDefaultMovies();
     } catch (error) {
       console.error('Error generating movie suggestions:', error);
       return this.getDefaultMovies();
@@ -188,15 +178,9 @@ export class WeekendPlannerService {
 
     try {
       const suggestions = await this.llm.generateMessage(context);
-
-      return [
-        {
-          activity: suggestions.split('\n')[0] || 'نزهة في الحديقة',
-          duration: '2-3 ساعات',
-          budget: config.budget || 'منخفضة'
-        }
-      ];
-
+      const parsed = this.parseStructuredList(suggestions, 2, 'outing');
+      if (parsed.length) return parsed;
+      return this.getDefaultOutings();
     } catch (error) {
       console.error('Error generating outing suggestions:', error);
       return this.getDefaultOutings();
@@ -240,7 +224,7 @@ export class WeekendPlannerService {
   /**
    * Format weekend message
    */
-  formatWeekendMessage(movies, outings, checklist, homeAlternative) {
+  formatWeekendMessage(movies, outings, checklist, homeAlternative, issues = []) {
     let message = `
 🎉 *خطة نهاية الأسبوع*
 
@@ -267,9 +251,157 @@ export class WeekendPlannerService {
       message += `${idx + 1}. ${activity}\n`;
     });
 
+    if (this.config.weekend?.include_issue_summary !== false) {
+      message += `\n\n🩺 *متابعة مشاكل الطفل:*\n`;
+      if (issues.length === 0) {
+        message += 'لا توجد تحديات نشطة، استمتعوا بالراحة!';
+      } else {
+        issues.forEach((issue, idx) => {
+          message += `${idx + 1}. ${issue.child_name}: ${issue.issue_title} — حالة ${issue.status} (شدة ${issue.severity || 'متوسطة'})\n`;
+        });
+      }
+    }
+
     message += `\n\nنتمنى لكم نهاية أسبوع سعيدة! 💙`;
 
     return message.trim();
+  }
+
+  formatWeekendPreviewMessage(movies, outings, issues = []) {
+    const firstMovie = movies[0];
+    const firstOuting = outings[0];
+    let message = '⏳ *نظرة منتصف الأسبوع على عطلة عطية*\n';
+
+    if (firstMovie) {
+      message += `\n🎬 فيلم مقترح: ${firstMovie.title} — ${firstMovie.reason || 'قصة ممتعة للتجمع العائلي'}`;
+    }
+    if (firstOuting) {
+      message += `\n🚗 خروجة مرشحة: ${firstOuting.activity} (${firstOuting.duration || 'ساعتان'})`;
+    }
+
+    if (this.config.weekend?.include_issue_summary !== false) {
+      if (issues.length) {
+        message += '\n\n🩺 *تذكير المتابعة*:';
+        issues.slice(0, 2).forEach((issue, idx) => {
+          message += `\n${idx + 1}. ${issue.child_name}: ${issue.issue_title} — راجعوا خطة المتابعة قبل الخروج.`;
+        });
+      } else {
+        message += '\n\n🩺 لا توجد متابعات معلّقة، اختاروا النشاط المريح لكم.';
+      }
+    }
+
+    message += '\n\nهل تحتاجون تعديلات؟ أخبروني قبل الخميس!';
+    return message;
+  }
+
+  parseStructuredList(text, maxItems, type) {
+    if (!text) return [];
+    const items = [];
+
+    try {
+      const jsonMatch = text.match(/\[[\s\S]*\]|\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        const arr = Array.isArray(parsed) ? parsed : Array.isArray(parsed.items) ? parsed.items : [];
+        arr.slice(0, maxItems).forEach((entry) => {
+          if (type === 'movie') {
+            items.push({
+              title: entry.title || entry.name || 'فيلم عائلي',
+              reason: entry.reason || entry.summary || 'ممتع وآمن للأطفال',
+              duration: entry.duration || entry.runtime || '90 دقيقة'
+            });
+          } else {
+            items.push({
+              activity: entry.activity || entry.title || 'نزهة في الحديقة',
+              duration: entry.duration || '2 ساعات',
+              budget: entry.budget || 'منخفضة'
+            });
+          }
+        });
+        if (items.length) return items;
+      }
+    } catch (error) {
+      console.warn('Failed to parse structured weekend list:', error);
+    }
+
+    const lines = text
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .slice(0, maxItems);
+
+    lines.forEach((line) => {
+      if (type === 'movie') {
+        items.push({ title: line, reason: line, duration: '90 دقيقة' });
+      } else {
+        items.push({ activity: line, duration: '2 ساعات', budget: 'منخفضة' });
+      }
+    });
+
+    return items;
+  }
+
+  getActiveIssuesSummary(familyId) {
+    try {
+      const db = getDatabase();
+      return db
+        .prepare(
+          `SELECT i.issue_title, i.status, i.severity, c.name as child_name
+           FROM child_issues i
+           INNER JOIN children c ON i.child_id = c.id
+           WHERE i.family_id = ? AND i.status IN ('active', 'monitoring')
+           ORDER BY i.severity DESC, i.updated_at DESC
+           LIMIT 3`
+        )
+        .all(familyId);
+    } catch (error) {
+      console.error('Failed to load child issues for weekend summary:', error);
+      return [];
+    }
+  }
+
+  async sendWeekendPreview() {
+    console.log('👀 Sending weekend previews...');
+    const families = FamilyModel.getAll();
+    const weekStart = format(startOfWeek(new Date()), 'yyyy-MM-dd');
+
+    for (const family of families) {
+      if (!family.onboarding_completed) continue;
+
+      try {
+        let plan = WeekendPlanModel.getByWeek(family.id, weekStart);
+        if (!plan) {
+          await this.generateFamilyWeekendPlan(family, weekStart);
+          plan = WeekendPlanModel.getByWeek(family.id, weekStart);
+        }
+        if (!plan || plan.preview_sent) continue;
+
+        await this.sendWeekendPreviewToFamily(family, plan);
+        WeekendPlanModel.markPreviewSent(plan.id);
+        await this.sleep(500);
+      } catch (error) {
+        console.error(`Error sending weekend preview to family ${family.id}:`, error);
+      }
+    }
+  }
+
+  async sendWeekendPreviewToFamily(family, plan) {
+    const guardians = GuardianModel.getByFamily(family.id);
+    if (guardians.length === 0) return;
+
+    const movies = this.safeJsonParse(plan.movies, []);
+    const outings = this.safeJsonParse(plan.outings, []);
+    const issues = this.getActiveIssuesSummary(family.id);
+    const message = this.formatWeekendPreviewMessage(movies, outings, issues);
+
+    if (family.send_to_group && family.family_group_id) {
+      await this.bot.sendMessageToGroup(family.family_group_id, message);
+    } else {
+      for (const guardian of guardians) {
+        if (!guardian.notification_enabled || !guardian.phone_number) continue;
+        await this.bot.sendMessage(guardian.phone_number, message);
+      }
+    }
   }
 
   /**
@@ -328,6 +460,16 @@ export class WeekendPlannerService {
    */
   sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  safeJsonParse(payload, fallback) {
+    if (!payload) return fallback;
+    try {
+      return JSON.parse(payload);
+    } catch (error) {
+      console.warn('Failed to parse JSON payload in WeekendPlannerService:', error);
+      return fallback;
+    }
   }
 }
 

@@ -229,8 +229,11 @@ export class AIProfileModel {
 /**
  * Weekend Plan Model
  */
+let weekendPreviewColumnChecked = false;
+
 export class WeekendPlanModel {
   static create(familyId, weekStartDate, movies, outings, checklist, homeAlternative) {
+    this.ensurePreviewColumn();
     const db = getDatabase();
     const stmt = db.prepare(`
       INSERT INTO weekend_plans (family_id, week_start_date, movies, outings, checklist, home_alternative)
@@ -248,6 +251,7 @@ export class WeekendPlanModel {
   }
 
   static getByWeek(familyId, weekStartDate) {
+    this.ensurePreviewColumn();
     const db = getDatabase();
     return db.prepare(`
       SELECT * FROM weekend_plans
@@ -256,6 +260,7 @@ export class WeekendPlanModel {
   }
 
   static markAsSent(id) {
+    this.ensurePreviewColumn();
     const db = getDatabase();
     const stmt = db.prepare(`
       UPDATE weekend_plans
@@ -263,6 +268,64 @@ export class WeekendPlanModel {
       WHERE id = ?
     `);
     return stmt.run(id);
+  }
+
+  static markPreviewSent(id) {
+    this.ensurePreviewColumn();
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      UPDATE weekend_plans
+      SET preview_sent = 1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+    return stmt.run(id);
+  }
+
+  static ensurePreviewColumn() {
+    if (weekendPreviewColumnChecked) return;
+    const db = getDatabase();
+    const columns = db.prepare('PRAGMA table_info(weekend_plans)').all();
+    const hasColumn = columns.some((column) => column.name === 'preview_sent');
+    if (!hasColumn) {
+      try {
+        db.exec('ALTER TABLE weekend_plans ADD COLUMN preview_sent INTEGER DEFAULT 0');
+      } catch (error) {
+        console.error('Failed to add preview_sent column:', error.message);
+      }
+    }
+    weekendPreviewColumnChecked = true;
+  }
+}
+
+export class ParentResourceLogModel {
+  static log(familyId, resourceType, title, metadata = {}) {
+    const db = getDatabase();
+    const stmt = db.prepare(
+      `INSERT INTO parent_resource_logs (family_id, resource_type, title, metadata)
+       VALUES (?, ?, ?, ?)`
+    );
+
+    return stmt.run(familyId, resourceType, title || null, JSON.stringify(metadata || {}));
+  }
+
+  static getLastSent(familyId, resourceType) {
+    const db = getDatabase();
+    const row = db
+      .prepare(
+        `SELECT * FROM parent_resource_logs
+         WHERE family_id = ? AND resource_type = ?
+         ORDER BY sent_at DESC
+         LIMIT 1`
+      )
+      .get(familyId, resourceType);
+
+    if (!row) return null;
+    try {
+      return { ...row, metadata: row.metadata ? JSON.parse(row.metadata) : {} };
+    } catch (error) {
+      console.error('Failed to parse parent resource metadata:', error);
+      return { ...row, metadata: {} };
+    }
   }
 }
 

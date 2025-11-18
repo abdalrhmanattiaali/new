@@ -349,6 +349,14 @@ parents_learning:
 # تخطيط نهاية الأسبوع
 weekend:
   enabled: true
+  include_issue_summary: true
+  generate:
+    day: "Tue"   # الثلاثاء
+    time: "18:00"
+  preview:
+    enabled: true
+    day: "Wed"
+    time: "12:30"
   send:
     day: "Thu"  # الخميس
     time: "18:30"
@@ -397,6 +405,36 @@ weekend:
       - "العاب عائلية"
       - "طبخ مشترك"
       - "قراءة قصص"
+
+# ترشيحات الكتب والدورات للوالدين
+parent_resources:
+  enabled: true
+  books:
+    check_time: "09:15"  # يتم التحقق يومياً في هذا الوقت
+    min_gap_days: 14
+    max_gap_days: 21
+    topics:
+      - "تربية الرضع"
+      - "تنظيم وقت العائلة"
+      - "الصحة النفسية للوالدين"
+    buttons:
+      - "أضف للقائمة ✅"
+      - "ذكرني لاحقاً ⏰"
+      - "أرسل نسخة صوتية 🎧"
+  courses:
+    day: "Sun"
+    time: "21:00"
+    min_gap_days: 7
+    topics:
+      father:
+        - "قيادة أسرية"
+        - "تنمية مهارات الأبوة"
+      mother:
+        - "توازن الأم العاملة"
+        - "عافية نفسية"
+      shared:
+        - "تواصل زوجي"
+        - "ذكاء عاطفي"
 
 # التذكيرات الذكية
 reminders:
