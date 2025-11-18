@@ -19,6 +19,7 @@ import { ChildIssueTrackingService } from '../services/childIssueTrackingService
 import { AudioStoryService } from '../services/audioStoryService.js';
 import { SpiritualRoutineService } from '../services/spiritualRoutineService.js';
 import { ParentResourceService } from '../services/parentResourceService.js';
+import { WeeklyMilestoneCheckpointService } from '../services/weeklyMilestoneCheckpointService.js';
 
 export class Scheduler {
   constructor(bot, config) {
@@ -39,6 +40,7 @@ export class Scheduler {
     this.audioStories = null;
     this.spiritualRoutine = null;
     this.parentResources = new ParentResourceService(bot, config);
+    this.weeklyMilestones = new WeeklyMilestoneCheckpointService(bot, config);
     this.jobs = [];
   }
 
@@ -161,12 +163,21 @@ export class Scheduler {
       () => this.journey.sendToyRecommendations()
     );
 
-    // Check anniversary reminders (every day at 6:00 AM)
-    this.scheduleJob(
-      '0 6 * * *',
-      'Anniversary Reminders',
-      () => this.anniversaryReminder.checkAndSendReminders()
-    );
+    const birthdaySettings = this.config.celebrations?.birthdays || {};
+    const marriageSettings = this.config.celebrations?.marriage || {};
+    const birthdaysDisabled = birthdaySettings.enabled === false;
+    const marriageDisabled = marriageSettings.enabled === false;
+
+    if (!(birthdaysDisabled && marriageDisabled)) {
+      const checkTime = birthdaySettings.check_time || '06:00';
+      const [aHour, aMinute] = checkTime.split(':');
+
+      this.scheduleJob(
+        `${aMinute} ${aHour} * * *`,
+        'Anniversary Reminders',
+        () => this.anniversaryReminder.checkAndSendReminders()
+      );
+    }
 
     // Send daily child development messages (every day at 8:00 AM)
     this.scheduleJob(
@@ -175,12 +186,29 @@ export class Scheduler {
       () => this.childDevelopment.sendDailyDevelopmentMessages()
     );
 
-    // Check monthly milestone reminders (every day at 7:00 AM)
-    this.scheduleJob(
-      '0 7 * * *',
-      'Monthly Milestone Reminders',
-      () => this.monthlyMilestone.checkAndSendMonthlyReminders()
-    );
+    if (this.config.celebrations?.child_monthly?.enabled !== false) {
+      const monthlyTime = this.config.celebrations?.child_monthly?.check_time || '07:00';
+      const [mHour, mMinute] = monthlyTime.split(':');
+
+      this.scheduleJob(
+        `${mMinute} ${mHour} * * *`,
+        'Monthly Milestone Reminders',
+        () => this.monthlyMilestone.checkAndSendMonthlyReminders()
+      );
+    }
+
+    if (this.config.celebrations?.weekly_checkpoint?.enabled !== false) {
+      const weeklyConfig = this.config.celebrations?.weekly_checkpoint || {};
+      const weeklyDay = this.getDayNumber(weeklyConfig.day, 4);
+      const weeklyTime = weeklyConfig.time || '20:30';
+      const [wkHour, wkMinute] = weeklyTime.split(':');
+
+      this.scheduleJob(
+        `${wkMinute} ${wkHour} * * ${weeklyDay}`,
+        'Weekly Milestone Checkpoint',
+        () => this.weeklyMilestones.sendWeeklyCheckpoints()
+      );
+    }
 
     // Send daily weather updates (every day at 9:00 AM)
     this.scheduleJob(

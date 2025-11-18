@@ -436,6 +436,26 @@ parent_resources:
         - "تواصل زوجي"
         - "ذكاء عاطفي"
 
+# الاحتفالات الدورية
+celebrations:
+  birthdays:
+    enabled: true
+    check_time: "06:00"
+    advance_days: 2
+    friendly_closing: "🎁 فكرة لطيفة: حضّروا بطاقة أو تسجيل صوتي قصير ووصلوه لصاحب العيد اليوم."
+  marriage:
+    enabled: true
+    advance_days: 5
+  child_monthly:
+    enabled: true
+    check_time: "07:05"
+  weekly_checkpoint:
+    enabled: true
+    day: "Thu"
+    time: "20:30"
+    include_issue_snapshot: true
+    include_next_stage: true
+
 # التذكيرات الذكية
 reminders:
   # تذكيرات التطعيمات

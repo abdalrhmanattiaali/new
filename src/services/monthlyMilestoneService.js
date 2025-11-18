@@ -9,6 +9,7 @@ import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { OpenAIClient } from '../utils/openaiClient.js';
+import { getMilestoneHighlights } from '../utils/milestoneLibrary.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -25,6 +26,11 @@ export class MonthlyMilestoneService {
    * Check and send monthly milestone reminders
    */
   async checkAndSendMonthlyReminders() {
+    if (this.config?.celebrations?.child_monthly?.enabled === false) {
+      console.log('⏸️ Monthly milestone reminders disabled via config.');
+      return;
+    }
+
     console.log('📅 Checking monthly milestone reminders...');
 
     const db = new Database(this.dbPath);
@@ -102,6 +108,8 @@ export class MonthlyMilestoneService {
       ageString = `${years} سنوات و${months} شهر`;
     }
 
+    const milestoneHighlights = getMilestoneHighlights(ageInMonths);
+
     const systemPrompt = `أنت خبير تطوير الأطفال تكتب رسائل احتفالية شهرية للوالدين.
 تحتفي بنمو الطفل وتذكر الوالدين بالإنجازات والمعالم التطورية.
 تستخدم لغة دافئة ومحفزة بالعربية الفصحى.`;
@@ -117,7 +125,7 @@ export class MonthlyMilestoneService {
 1. عنوان احتفالي (🎉 ${childName} أكمل ${ageString}!)
 2. تهنئة دافئة للوالدين
 3. ملخص للمعالم المتوقعة في هذا الشهر:
-   ${this.getMilestoneHints(ageInMonths)}
+   ${milestoneHighlights}
 4. كلمات تشجيع للوالدين
 5. تذكير بأن كل طفل ينمو بوتيرته الخاصة
 6. دعوة لطيفة
@@ -144,40 +152,6 @@ export class MonthlyMilestoneService {
       // Fallback message
       return `🎉 *${childName} أكمل ${ageString}!*\n\nمبروك! طفلكم الغالي ${childName} أكمل اليوم ${ageString} من العمر! 🎈\n\nكل شهر هو رحلة جديدة مليئة بالنمو والتطور. نحن فخورون بكم كوالدين وبالحب الذي تقدمونه لـ ${childName}.\n\nاستمروا في هذه الرحلة الرائعة! 💝`;
     }
-  }
-
-  /**
-   * Get milestone hints for AI prompt based on age
-   */
-  getMilestoneHints(ageInMonths) {
-    const hints = {
-      1: '- حركات أقل عشوائية\n- يبدأ الابتسام الاجتماعي\n- يتتبع الوجوه',
-      2: '- رفع الرأس أعلى\n- المناغاة تبدأ\n- يميز الأصوات',
-      3: '- يضحك بصوت عالٍ\n- يمسك الأشياء\n- يرفع صدره عند وقت البطن',
-      4: '- قد يتدحرج\n- يجلس بدعم\n- ينقل الأشياء بين اليدين',
-      5: '- يتدحرج في الاتجاهين\n- يجلس بوسائد\n- يلعب بأصابع قدميه',
-      6: '- يجلس بدون دعم\n- قد يبدأ الحبو\n- **بداية الطعام الصلب**',
-      7: '- يحبو أو يستعد للحبو\n- يشد نفسه للوقوف\n- يطعم نفسه finger foods',
-      8: '- الحبو بثقة\n- يمشي ممسكاً بالأثاث\n- قبضة الكماشة متقنة',
-      9: '- cruising (مشي بالتمسك)\n- يشير لما يريد\n- يفهم "لا"',
-      10: '- قد يقف بدون مساعدة\n- يقلد الأفعال\n- يتبع أوامر بسيطة',
-      11: '- قد يخطو خطوات\n- يمسك كوب بيديه\n- يقلب صفحات',
-      12: '- **عيد الميلاد الأول!**\n- قد يمشي\n- أول كلمة حقيقية\n- يفهم 50-100 كلمة',
-      15: '- يمشي بثقة\n- يركل كرة\n- 5-20 كلمة',
-      18: '- يجري\n- يصعد الدرج\n- انفجار لغوي (50+ كلمة)\n- نوبات غضب قد تبدأ',
-      24: '- **عيد الميلاد الثاني!**\n- يقفز\n- جمل من كلمتين\n- لعب تخيلي'
-    };
-
-    // Find closest milestone
-    const ages = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 18, 24];
-    let closestAge = ages[0];
-    for (const age of ages) {
-      if (ageInMonths >= age) {
-        closestAge = age;
-      }
-    }
-
-    return hints[closestAge] || '- تطور مستمر في جميع المجالات\n- نمو جسدي ومعرفي\n- مهارات اجتماعية';
   }
 
   /**
