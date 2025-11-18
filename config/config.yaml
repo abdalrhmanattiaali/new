@@ -143,6 +143,100 @@ tracks:
     - checklist
     - quick_tip
 
+# نظام الإشعارات الموحد
+notifications:
+  per_hour_limit: 1
+  timeline:
+    weekday:
+      - id: daily_0630_morning_blessing
+        time: "06:30"
+      - id: daily_0700_morning_adhkar
+        time: "07:00"
+      - id: daily_0800_father_lesson
+        time: "08:00"
+      - id: daily_0900_child_activity_one
+        time: "09:00"
+      - id: daily_1000_mother_break
+        time: "10:00"
+      - id: daily_1100_micro_learning
+        time: "11:00"
+      - id: daily_1200_lunch_dua
+        time: "12:00"
+      - id: daily_1300_father_midday
+        time: "13:00"
+      - id: daily_1400_mother_selfcare
+        time: "14:00"
+      - id: daily_1500_family_pause
+        time: "15:00"
+      - id: daily_1600_child_activity_two
+        time: "16:00"
+      - id: daily_1700_playtime
+        time: "17:00"
+      - id: daily_1800_maghrib_call
+        time: "18:00"
+      - id: daily_1900_dinner_routine
+        time: "19:00"
+      - id: daily_2000_family_activity
+        time: "20:00"
+      - id: daily_2100_bedtime_prep
+        time: "21:00"
+      - id: daily_2145_sleep_dua
+        time: "22:00"
+    thursday:
+      - id: thursday_0800_review_start
+        time: "08:00"
+      - id: thursday_0900_quiz
+        time: "09:00"
+      - id: thursday_1000_progress
+        time: "10:00"
+      - id: thursday_1100_application_review
+        time: "11:00"
+      - id: thursday_1200_story_share
+        time: "12:00"
+      - id: thursday_1300_certificate
+        time: "13:00"
+      - id: thursday_1500_look_ahead
+        time: "15:00"
+      - id: thursday_1700_resources
+        time: "17:00"
+      - id: thursday_1900_review_video
+        time: "19:00"
+      - id: thursday_2000_completion_reward
+        time: "20:00"
+      - id: thursday_2100_reflection
+        time: "21:00"
+      - id: thursday_2200_closing
+        time: "22:00"
+    friday:
+      - id: friday_0530_pre_fajr
+        time: "05:30"
+      - id: friday_0600_post_fajr
+        time: "06:00"
+      - id: friday_0730_ritual_prep
+        time: "07:30"
+      - id: friday_0800_father_ready
+        time: "08:00"
+      - id: friday_0900_family_reading
+        time: "09:00"
+      - id: friday_1000_story_time
+        time: "10:00"
+      - id: friday_1130_home_prep
+        time: "11:30"
+      - id: friday_1200_departure
+        time: "12:00"
+      - id: friday_1230_dua_window
+        time: "13:00"
+      - id: friday_1600_family_activity
+        time: "16:00"
+      - id: friday_1900_special_dinner
+        time: "19:00"
+      - id: friday_2000_family_circle
+        time: "20:00"
+      - id: friday_2130_special_bath
+        time: "21:30"
+      - id: friday_2230_week_reflection
+        time: "22:30"
+
 # القصص الصوتية اليومية قبل النوم
 audio_stories:
   enabled: true

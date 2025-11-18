@@ -4,7 +4,7 @@
  */
 
 import pkg from 'whatsapp-web.js';
-const { Client, LocalAuth, MessageMedia } = pkg;
+const { Client, LocalAuth, MessageMedia, Buttons, List } = pkg;
 import qrcode from 'qrcode-terminal';
 import { EventEmitter } from 'events';
 
@@ -173,13 +173,40 @@ export class WhatsAppBot extends EventEmitter {
     try {
       const chatId = to.includes('@') ? to : `${to}@c.us`;
 
-      // Create a formatted message with buttons as text options
-      let formattedMessage = text + '\n\n';
-      buttons.forEach((button, index) => {
-        formattedMessage += `${index + 1}. ${button}\n`;
-      });
+      const normalizedButtons = (buttons || [])
+        .map((button) => (typeof button === 'string' ? button.trim() : ''))
+        .filter(Boolean);
 
-      await this.client.sendMessage(chatId, formattedMessage);
+      if (!normalizedButtons.length) {
+        await this.client.sendMessage(chatId, text);
+        console.log(`✅ Message sent to ${to} without interactive buttons`);
+        return true;
+      }
+
+      if (normalizedButtons.length <= 3) {
+        const buttonInstances = normalizedButtons.map((label) => ({ body: label }));
+        const buttonMessage = new Buttons(text, buttonInstances, '', 'اختر الإجراء المناسب');
+        await this.client.sendMessage(chatId, buttonMessage);
+      } else {
+        const rows = normalizedButtons.map((label, index) => ({
+          id: `OPTION_${index + 1}`,
+          title: label.slice(0, 24) || `خيار ${index + 1}`,
+          description: label.length > 24 ? label.slice(24, 120) : ''
+        }));
+        const listMessage = new List(
+          text,
+          'اختر متابعة',
+          [
+            {
+              title: 'خيارات المتابعة',
+              rows
+            }
+          ],
+          'تفاعل مع الرسالة',
+          'استخدم القائمة لاختيار ما يناسبك'
+        );
+        await this.client.sendMessage(chatId, listMessage);
+      }
       console.log(`✅ Message with buttons sent to ${to}`);
       return true;
     } catch (error) {

@@ -975,6 +975,30 @@ const ROUTINES = [
   ...SPECIAL_SLOTS.map((slot) => createRoutineDefinition(slot))
 ];
 
+const ALL_SLOT_BLUEPRINTS = [...DAILY_SLOTS, ...FRIDAY_SLOTS, ...THURSDAY_SLOTS, ...SPECIAL_SLOTS];
+const SLOT_BLUEPRINT_MAP = ALL_SLOT_BLUEPRINTS.reduce((acc, slot) => {
+  acc[slot.id] = slot;
+  return acc;
+}, {});
+
+function compareTimes(a, b) {
+  if (!a && !b) return 0;
+  if (!a) return -1;
+  if (!b) return 1;
+  const [ah = 0, am = 0] = a.split(':').map((value) => parseInt(value, 10));
+  const [bh = 0, bm = 0] = b.split(':').map((value) => parseInt(value, 10));
+  if (ah !== bh) {
+    return ah - bh;
+  }
+  return am - bm;
+}
+
+function getHourKey(time) {
+  if (!time) return 'unknown';
+  const [hour] = time.split(':');
+  return hour.padStart(2, '0');
+}
+
 function createParentsPhrase(fatherName, motherName) {
   if (fatherName && motherName) {
     return `${fatherName} و${motherName}`;
@@ -1024,14 +1048,14 @@ export class SpiritualRoutineService {
 
     const targetDate = new Date(date);
     const isoDate = format(targetDate, 'yyyy-MM-dd');
-    const routines = this.getApplicableRoutines(targetDate);
+    const planEntries = this.buildTimelinePlan(targetDate);
 
-    if (!routines.length) {
+    if (!planEntries.length) {
       console.log('ℹ️ No spiritual routines to schedule today.');
       return;
     }
 
-    console.log(`🕌 Scheduling ${routines.length} spiritual routines for ${isoDate}...`);
+    console.log(`🕌 Scheduling ${planEntries.length} spiritual routines for ${isoDate}...`);
 
     const families = FamilyModel.getAll();
 
@@ -1048,9 +1072,11 @@ export class SpiritualRoutineService {
 
       const context = this.buildContext(family, guardians, child, targetDate);
 
-      for (const routine of routines) {
+      for (const slot of planEntries) {
+        const routine = slot.routine;
         const schedule = this.getRoutineSchedule(routine);
-        if (!schedule?.time) continue;
+        const slotTime = slot.time || schedule?.time;
+        if (!slotTime) continue;
 
         const already = SpiritualRoutineLogModel.wasScheduled(
           family.id,
@@ -1059,12 +1085,12 @@ export class SpiritualRoutineService {
         );
         if (already) continue;
 
-        const scheduledDate = this.buildScheduleDate(targetDate, schedule.time);
+        const scheduledDate = this.buildScheduleDate(targetDate, slotTime);
         if (!scheduledDate) continue;
 
         if (this.isQuietHour(scheduledDate)) {
           console.log(
-            `⚠️ Skipping ${routine.id} for ${family.family_name} due to quiet hours (${schedule.time}).`
+            `⚠️ Skipping ${routine.id} for ${family.family_name} due to quiet hours (${slotTime}).`
           );
           continue;
         }
@@ -1079,7 +1105,7 @@ export class SpiritualRoutineService {
           continue;
         }
 
-        const buttons = this.getRoutineButtons(routine);
+        const buttons = this.getRoutineButtons(routine, slot.buttons);
 
         const scheduledId = ScheduledMessageModel.create(
           family.id,
@@ -1101,6 +1127,122 @@ export class SpiritualRoutineService {
     }
 
     console.log('✅ Spiritual routines scheduled successfully.');
+  }
+
+  buildTimelinePlan(date) {
+    const configured = this.getConfiguredPlanEntries(date);
+    const basePlan = configured.length ? configured : this.getFallbackPlan(date);
+    const specials = this.getSpecialPlanEntries(date);
+    const combined = [...basePlan, ...specials];
+    const perHourLimit = this.config.notifications?.per_hour_limit ?? 1;
+    return this.enforcePerHourLimit(combined, perHourLimit);
+  }
+
+  getConfiguredPlanEntries(date) {
+    const timelineConfig = this.getTimelineConfigForDate(date);
+    if (!Array.isArray(timelineConfig) || !timelineConfig.length) {
+      return [];
+    }
+    return timelineConfig
+      .map((entry) => (typeof entry === 'string' ? { id: entry } : entry))
+      .map((entry) => this.enrichPlanEntry(entry, date))
+      .filter(Boolean);
+  }
+
+  getTimelineConfigForDate(date) {
+    const timeline = this.config.notifications?.timeline;
+    if (!timeline) return [];
+    const day = date.getDay();
+    if (day === 5 && Array.isArray(timeline.friday)) return timeline.friday;
+    if (day === 4 && Array.isArray(timeline.thursday)) return timeline.thursday;
+    if (day !== 4 && day !== 5 && Array.isArray(timeline.weekday)) return timeline.weekday;
+    if (Array.isArray(timeline.default)) return timeline.default;
+    return [];
+  }
+
+  getFallbackPlan(date) {
+    const day = date.getDay();
+    let sourceSlots = DAILY_SLOTS;
+    if (day === 5) {
+      sourceSlots = FRIDAY_SLOTS;
+    } else if (day === 4) {
+      sourceSlots = THURSDAY_SLOTS;
+    }
+    return sourceSlots
+      .map((slot) => this.enrichPlanEntry({ id: slot.id }, date))
+      .filter(Boolean);
+  }
+
+  getSpecialPlanEntries(date) {
+    return SPECIAL_SLOTS.filter((slot) => this.isSlotActive(slot, date))
+      .map((slot) => this.enrichPlanEntry({ id: slot.id }, date))
+      .map((entry) => ({ ...entry, priority: Math.max(entry?.priority || 0, 80) }))
+      .filter(Boolean);
+  }
+
+  enrichPlanEntry(entry, date) {
+    if (!entry?.id) return null;
+    const routine = this.getRoutineById(entry.id);
+    if (!routine) return null;
+    const blueprint = SLOT_BLUEPRINT_MAP[entry.id];
+    const schedule = this.getRoutineSchedule(routine, date) || routine.schedule;
+    const time = entry.time || blueprint?.time || schedule?.time;
+    if (!time) return null;
+    return {
+      id: entry.id,
+      routine,
+      time,
+      buttons: entry.buttons,
+      priority: entry.priority ?? this.derivePriority(blueprint)
+    };
+  }
+
+  derivePriority(blueprint = {}) {
+    if (!blueprint) return 40;
+    if (blueprint.scheduleType === 'monthly') return 95;
+    if (blueprint.scheduleType === 'weekly') return 80;
+    return 40;
+  }
+
+  isSlotActive(slot, date) {
+    if (!slot) return false;
+    if (slot.scheduleType === 'monthly') {
+      return typeof slot.dayOfMonth === 'number' && slot.dayOfMonth === date.getDate();
+    }
+    if (slot.scheduleType === 'weekly') {
+      if (typeof slot.dayOfWeek === 'number') {
+        return slot.dayOfWeek === date.getDay();
+      }
+      if (Array.isArray(slot.daysOfWeek)) {
+        return slot.daysOfWeek.includes(date.getDay());
+      }
+    }
+    return false;
+  }
+
+  enforcePerHourLimit(entries, limit = 1) {
+    if (!Array.isArray(entries) || !entries.length) return [];
+    const sorted = [...entries].sort((a, b) => {
+      const priorityDiff = (b.priority || 0) - (a.priority || 0);
+      if (priorityDiff !== 0) return priorityDiff;
+      return compareTimes(a.time, b.time);
+    });
+
+    const bucket = new Map();
+
+    for (const entry of sorted) {
+      const hourKey = getHourKey(entry.time);
+      const hourEntries = bucket.get(hourKey) || [];
+      if (hourEntries.length >= limit) {
+        continue;
+      }
+      hourEntries.push(entry);
+      bucket.set(hourKey, hourEntries);
+    }
+
+    return Array.from(bucket.values())
+      .flat()
+      .sort((a, b) => compareTimes(a.time, b.time));
   }
 
   /**
@@ -1290,7 +1432,10 @@ export class SpiritualRoutineService {
   /**
    * Get buttons for routine
    */
-  getRoutineButtons(routine) {
+  getRoutineButtons(routine, inlineOverride = null) {
+    if (Array.isArray(inlineOverride) && inlineOverride.length) {
+      return normalizeButtons(inlineOverride);
+    }
     const override = this.getRoutineOverride(routine.id);
     if (override?.buttons && Array.isArray(override.buttons)) {
       return normalizeButtons(override.buttons);
@@ -1325,42 +1470,6 @@ export class SpiritualRoutineService {
       return currentMinutes >= startMinutes || currentMinutes <= endMinutes;
     }
     return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
-  }
-
-  /**
-   * Get routines applicable for current day
-   */
-  getApplicableRoutines(date) {
-    const routines = [];
-    for (const routine of ROUTINES) {
-      const schedule = this.getRoutineSchedule(routine, date);
-      if (!schedule) continue;
-
-      if (schedule.type === 'daily') {
-        if (Array.isArray(schedule.daysOfWeek) && schedule.daysOfWeek.length) {
-          if (schedule.daysOfWeek.includes(date.getDay())) {
-            routines.push(routine);
-          }
-        } else {
-          routines.push(routine);
-        }
-      } else if (schedule.type === 'weekly') {
-        if (Array.isArray(schedule.daysOfWeek) && schedule.daysOfWeek.length) {
-          if (schedule.daysOfWeek.includes(date.getDay())) {
-            routines.push(routine);
-          }
-        } else if (typeof schedule.dayOfWeek === 'number' && schedule.dayOfWeek === date.getDay()) {
-          routines.push(routine);
-        }
-      } else if (
-        schedule.type === 'monthly' &&
-        typeof schedule.dayOfMonth === 'number' &&
-        schedule.dayOfMonth === date.getDate()
-      ) {
-        routines.push(routine);
-      }
-    }
-    return routines;
   }
 
   /**
