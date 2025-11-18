@@ -10,7 +10,8 @@ import {
   FamilyModel,
   GuardianModel,
   ChildModel,
-  ChildAudioStoryModel
+  ChildAudioStoryModel,
+  CoupleFeedbackModel
 } from '../database/models.js';
 import { getDatabase } from '../database/init.js';
 import { LLMService } from '../ai/llm.js';
@@ -139,6 +140,11 @@ export class AudioStoryService {
       .map((story) => `• ${story.story_title}`)
       .join('\n');
 
+    const relationshipInsights = CoupleFeedbackModel.getRecentByFamily(
+      family.id,
+      this.config.couple_feedback?.history_window || 6
+    );
+
     const additionalContextParts = [
       `القصة موجهة للاستماع قبل النوم لتعزيز عادة السماع لدى الطفل ${child.name}.`,
       `احرص على أن تتراوح مدة القصة بين 2 و5 دقائق مع إيقاع هادئ ونبرة حنونة.`,
@@ -172,7 +178,9 @@ export class AudioStoryService {
       previousInteractions,
       activeIssues,
       preferredFormat: 'audio_story',
-      configFormats: this.config.tracks?.formats || []
+      configFormats: this.config.tracks?.formats || [],
+      relationshipInsights,
+      familyId: family.id
     };
 
     for (let attempt = 0; attempt < 2; attempt++) {

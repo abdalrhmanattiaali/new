@@ -3,7 +3,13 @@
  * معالج الرسائل الواردة
  */
 
-import { FamilyModel, GuardianModel, InteractionModel, ChildModel } from '../database/models.js';
+import {
+  FamilyModel,
+  GuardianModel,
+  InteractionModel,
+  ChildModel,
+  CoupleFeedbackModel
+} from '../database/models.js';
 import { OnboardingService } from '../services/onboarding.js';
 import { GroupOnboardingService } from '../services/groupOnboardingService.js';
 import { ChildIssueTrackingService } from '../services/childIssueTrackingService.js';
@@ -52,6 +58,10 @@ export class MessageHandler {
     ];
 
     this.noIssueKeywords = ['كل شيء تمام', 'كل شىء تمام', 'لا توجد مشاكل', 'ما في مشكلة', 'مفيش مشكلة'];
+
+    this.couplePositiveKeywords = ['ايجاب', 'امتنان', 'شكر', 'حلو', 'جميل'];
+    this.coupleNegativeKeywords = ['سلبي', 'شكوى', 'زعل', 'مضايق', 'عتاب'];
+    this.coupleSubjectKeywords = ['زوج', 'زوجه', 'زوجي', 'زوجتى', 'زوجتي', 'شريك', 'شريكتي', 'شريكي', 'زوجيه'];
   }
 
   /**
@@ -507,6 +517,27 @@ ${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marria
       return;
     }
 
+    if (buttonClicked === 'إيجابيات اليوم 🌟') {
+      await this.bot.sendMessage(
+        from,
+        '✨ أخبرني بأجمل شيئين لاحظتهما في شريكك اليوم، حتى لو كانا بسيطين.'
+      );
+      return;
+    }
+
+    if (buttonClicked === 'احتاج أفضفض 📝') {
+      await this.bot.sendMessage(
+        from,
+        '📝 أرسل ما يزعجك مع ذكر موقف واحد فقط لنساعد على حلّه بهدوء.'
+      );
+      return;
+    }
+
+    if (buttonClicked === 'أشارك لاحقاً ⏰') {
+      await this.bot.sendMessage(from, '⏰ تمام، سأذكرك خلال الساعات القادمة للعودة للمحادثة.');
+      return;
+    }
+
     if (buttonClicked.includes('تخطي')) {
       await this.bot.sendMessage(from, 'تم التخطي ✓');
       return;
@@ -522,6 +553,10 @@ ${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marria
 
     // Log the interaction
     InteractionModel.create(guardian.family_id, guardian.id, 'general', body, null);
+
+    if (await this.detectCoupleFeedback(message, guardian)) {
+      return;
+    }
 
     if (await this.detectAndHandleChildIssue(message, guardian)) {
       return;
@@ -540,6 +575,61 @@ ${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marria
       from,
       'شكراً لرسالتك! أنا هنا لمساعدتك. اكتب "مساعدة" لرؤية ما يمكنني فعله.'
     );
+  }
+
+  async detectCoupleFeedback(message, guardian) {
+    const body = message.body.trim();
+    if (!body) return false;
+
+    const normalized = this.normalizeText(body);
+    const hasPositive = this.couplePositiveKeywords.some(keyword =>
+      normalized.includes(this.normalizeText(keyword))
+    );
+    const hasNegative = this.coupleNegativeKeywords.some(keyword =>
+      normalized.includes(this.normalizeText(keyword))
+    );
+    if (!hasPositive && !hasNegative) {
+      return false;
+    }
+
+    const mentionsPartner = this.coupleSubjectKeywords.some(keyword =>
+      normalized.includes(this.normalizeText(keyword))
+    );
+    const replyingToPrompt = this.wasRecentCouplePrompt(guardian.id);
+    if (!mentionsPartner && !replyingToPrompt) {
+      return false;
+    }
+
+    const positivesText = hasPositive ? this.extractPositiveSection(body) : '';
+    const challengesText = hasNegative ? this.extractNegativeSection(body) : '';
+    const gratitudeText = this.extractGratitudeSection(body);
+
+    if (!positivesText && !challengesText) {
+      // fallback to raw body if clearly tied to prompt
+      if (!replyingToPrompt) {
+        return false;
+      }
+    }
+
+    const sentiment = hasPositive && hasNegative ? 'mixed' : hasNegative ? 'challenge' : 'positive';
+
+    CoupleFeedbackModel.logEntry({
+      familyId: guardian.family_id,
+      guardianId: guardian.id,
+      partnerRole: guardian.role === 'father' ? 'mother' : 'father',
+      sentiment,
+      positivesText: positivesText || (hasPositive ? body : ''),
+      challengesText: challengesText || (hasNegative ? body : ''),
+      gratitudeText,
+      source: 'whatsapp'
+    });
+
+    await this.bot.sendMessage(
+      message.from,
+      '💌 تم حفظ رسالتك بسرية، وسأضبط رسائل الذكاء الاصطناعي لتراعي ما شاركته.'
+    );
+
+    return true;
   }
 
   /**
@@ -692,6 +782,42 @@ ${family.marriage_date ? `💍 تاريخ الزواج: ${new Date(family.marria
     }
 
     return true;
+  }
+
+  extractPositiveSection(text) {
+    return this.extractSection(text, /(إيجابيات?|الايجابيات|اجمل ما فيه|احب فيه)/i);
+  }
+
+  extractNegativeSection(text) {
+    return this.extractSection(text, /(سلبيات?|السلبيات|عيوب|ملاحظات سلبية|شكوى زوجية)/i);
+  }
+
+  extractGratitudeSection(text) {
+    return this.extractSection(text, /(شكراً|شكرا|امتنان|ممتن|شاكرة)/i, true);
+  }
+
+  extractSection(text, regex, singleLine = false) {
+    if (!text) return '';
+    const match = text.match(regex);
+    if (!match) return '';
+    const after = text.slice(match.index + match[0].length);
+    let section = after.split(/(?:\n\s*\n|\n\s*[-•]|سلبيات|السلبيات|إيجابيات|الايجابيات)/i)[0];
+    if (singleLine) {
+      section = section.split(/\n|\./)[0];
+    }
+    return section.trim();
+  }
+
+  wasRecentCouplePrompt(guardianId) {
+    if (!guardianId) return false;
+    const interactions = InteractionModel.getByGuardian(guardianId, 6);
+    if (!interactions?.length) return false;
+    const cutoff = Date.now() - 1000 * 60 * 60 * 72; // 3 أيام
+    return interactions.some((interaction) => {
+      if (!interaction.message_type?.startsWith('couple_feedback')) return false;
+      const created = interaction.created_at ? new Date(interaction.created_at).getTime() : 0;
+      return created >= cutoff;
+    });
   }
 
   async generateFollowUpSpiritualContent(

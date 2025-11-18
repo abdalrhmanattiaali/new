@@ -3,7 +3,13 @@
  * خدمة تخطيط نهاية الأسبوع
  */
 
-import { FamilyModel, GuardianModel, ChildModel, WeekendPlanModel } from '../database/models.js';
+import {
+  FamilyModel,
+  GuardianModel,
+  ChildModel,
+  WeekendPlanModel,
+  CoupleFeedbackModel
+} from '../database/models.js';
 import { LLMService } from '../ai/llm.js';
 import { format, startOfWeek } from 'date-fns';
 import { getDatabase } from '../database/init.js';
@@ -55,10 +61,10 @@ export class WeekendPlannerService {
     const childAge = this.calculateAge(child.birth_date);
 
     // Generate movie suggestions
-    const movies = await this.generateMovieSuggestions(child.name, childAge);
+    const movies = await this.generateMovieSuggestions(family, child.name, childAge);
 
     // Generate outing suggestions
-    const outings = await this.generateOutingSuggestions(child.name, childAge);
+    const outings = await this.generateOutingSuggestions(family, child.name, childAge);
 
     // Generate checklist
     const checklist = this.generateChecklist();
@@ -136,7 +142,7 @@ export class WeekendPlannerService {
   /**
    * Generate movie suggestions
    */
-  async generateMovieSuggestions(childName, childAge) {
+  async generateMovieSuggestions(family, childName, childAge) {
     const config = this.config.weekend?.movies;
     if (!config?.enabled) return [];
 
@@ -146,7 +152,9 @@ export class WeekendPlannerService {
       childAge,
       guardianName: 'العائلة',
       timeOfDay: 'المساء',
-      additionalContext: `التقييم: ${config.age_rating_max || 'PG'}, اللغة: ${config.language_pref || 'ar_en_dubbed'}`
+      additionalContext: `التقييم: ${config.age_rating_max || 'PG'}, اللغة: ${config.language_pref || 'ar_en_dubbed'}`,
+      relationshipInsights: this.getRelationshipInsights(family?.id),
+      familyId: family?.id
     };
 
     try {
@@ -163,7 +171,7 @@ export class WeekendPlannerService {
   /**
    * Generate outing suggestions
    */
-  async generateOutingSuggestions(childName, childAge) {
+  async generateOutingSuggestions(family, childName, childAge) {
     const config = this.config.weekend?.outings;
     if (!config?.enabled) return [];
 
@@ -173,7 +181,9 @@ export class WeekendPlannerService {
       childAge,
       guardianName: 'العائلة',
       timeOfDay: 'النهار',
-      additionalContext: `الميزانية: ${config.budget || 'متوسطة'}, المدة: ${config.duration_hours || 2} ساعات`
+      additionalContext: `الميزانية: ${config.budget || 'متوسطة'}, المدة: ${config.duration_hours || 2} ساعات`,
+      relationshipInsights: this.getRelationshipInsights(family?.id),
+      familyId: family?.id
     };
 
     try {
@@ -453,6 +463,14 @@ export class WeekendPlannerService {
     } else {
       return `${years} سنوات`;
     }
+  }
+
+  getRelationshipInsights(familyId) {
+    if (!familyId) return [];
+    return CoupleFeedbackModel.getRecentByFamily(
+      familyId,
+      this.config.couple_feedback?.history_window || 6
+    );
   }
 
   /**

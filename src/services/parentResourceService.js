@@ -4,7 +4,13 @@
  */
 
 import { differenceInCalendarDays } from 'date-fns';
-import { FamilyModel, GuardianModel, ChildModel, ParentResourceLogModel } from '../database/models.js';
+import {
+  FamilyModel,
+  GuardianModel,
+  ChildModel,
+  ParentResourceLogModel,
+  CoupleFeedbackModel
+} from '../database/models.js';
 import { LLMService } from '../ai/llm.js';
 
 export class ParentResourceService {
@@ -93,7 +99,9 @@ export class ParentResourceService {
         category: 'parents_learning',
         tone: 'ملهم وعملي',
         focus: 'كتاب واحد عميق يساعد الأسرة في الأسبوعين القادمين'
-      }
+      },
+      relationshipInsights: this.getRelationshipInsights(family.id),
+      familyId: family.id
     };
 
     let message;
@@ -131,7 +139,9 @@ export class ParentResourceService {
         category: 'parents_learning',
         tone: 'تشجيعي وسريع',
         focus: 'درس مصغر لا يتجاوز 60 دقيقة للأب أو الأم'
-      }
+      },
+      relationshipInsights: this.getRelationshipInsights(family.id),
+      familyId: family.id
     };
 
     let message;
@@ -197,6 +207,14 @@ export class ParentResourceService {
     const minSafe = Math.max(1, Math.floor(min));
     const maxSafe = Math.max(minSafe, Math.floor(max));
     return Math.floor(Math.random() * (maxSafe - minSafe + 1)) + minSafe;
+  }
+
+  getRelationshipInsights(familyId) {
+    if (!familyId) return [];
+    return CoupleFeedbackModel.getRecentByFamily(
+      familyId,
+      this.config.couple_feedback?.history_window || 6
+    );
   }
 
   sleep(ms) {

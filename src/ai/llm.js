@@ -151,7 +151,8 @@ export class LLMService {
       trackMetadata = {},
       preferredFormat,
       configFormats = [],
-      knowledgeHints = []
+      knowledgeHints = [],
+      relationshipInsights = []
     } = context;
 
     const prompts = {
@@ -296,6 +297,24 @@ ${additionalContext ? `تفاصيل إضافية: ${additionalContext}\n` : ''}
 - استخدم لغة دافئة يسهل قراءتها بصوت مسموع.
       `.trim(),
 
+      couple_feedback_checkin: `
+اكتب رسالة قصيرة (4-5 أسطر) للوالد/ة ${guardianName} تشجعه على مشاركة إيجابية واحدة وتحدٍ واحد مع شريكه.
+
+- ذكّر بأن المساحة آمنة وسرية.
+- اطلب وصف إحساسه عند تذكر الإيجابية.
+- ساعده على صياغة طلب دعم واضح للتحدي بدون لوم.
+- اختم بجملة توضح أنك ستوصل الرسالة برفق أو تقدم خطوات لاحقة.
+      `.trim(),
+
+      couple_feedback_gratitude: `
+اكتب رسالة امتنان حارة تدعو ${guardianName} لذكر شيئين يحبهما في شريكه اليوم.
+
+- شجعه على ربط الامتنان بلحظة عاشها هذا الأسبوع.
+- اطلب منه إرسال جملة امتنان قصيرة لإسعاد الشريك.
+- اقترح لفتة عملية (رسالة صوتية، كوب قهوة، حضن).
+- اختم بوعد أنك ستدعم الطرف الآخر برسالة مشجعة أيضاً.
+      `.trim(),
+
       default: `
 اكتب رسالة قصيرة (3-4 أسطر) للوالد/ة ${guardianName} حول ${messageType} لطفلهم ${childName} (عمر ${childAge}).
 ${additionalContext ? `سياق إضافي: ${additionalContext}\n` : ''}
@@ -317,6 +336,7 @@ ${additionalContext ? `سياق إضافي: ${additionalContext}\n` : ''}
     const memoryBlock = this.formatPreviousInteractions(previousInteractions);
     const issuesBlock = this.formatActiveIssues(activeIssues);
     const knowledgeBlock = this.formatKnowledge(knowledgeSnippets);
+    const relationshipBlock = this.formatRelationshipInsights(relationshipInsights);
 
     const knowledgeHintLine = knowledgeHints?.length
       ? `كلمات مفتاحية إضافية: ${knowledgeHints.join(', ')}`
@@ -336,6 +356,8 @@ ${formatInstruction ? `تعليمات شكل الإخراج:\n${formatInstructio
 ${issuesBlock ? `التحديات أو المتابعة الحالية:\n${issuesBlock}\n` : 'التحديات أو المتابعة الحالية:\n- لا توجد تحديات مسجلة حالياً'}
 
 ${knowledgeBlock ? `معرفة داعمة مختارة:\n${knowledgeBlock}\n` : ''}
+
+${relationshipBlock ? `مقتطفات عن العلاقة الزوجية:\n${relationshipBlock}\n` : ''}
 
 ذاكرة المحادثة الأخيرة (${previousInteractions?.length || 0}):
 ${memoryBlock}
@@ -414,6 +436,27 @@ ${prompts[messageType] || prompts.default}
       .join('\n');
   }
 
+  formatRelationshipInsights(insights = []) {
+    if (!Array.isArray(insights) || insights.length === 0) {
+      return '';
+    }
+
+    return insights
+      .slice(0, 6)
+      .map((entry) => {
+        const sentimentIcon = entry.sentiment === 'positive' ? '💚' : entry.sentiment === 'challenge' ? '⚠️' : '📝';
+        const positive = this.safeTruncate(entry.positives_text || '', 120);
+        const challenge = this.safeTruncate(entry.challenges_text || '', 120);
+        const gratitude = this.safeTruncate(entry.gratitude_text || '', 80);
+        const parts = [];
+        if (positive) parts.push(`إيجابية: ${positive}`);
+        if (challenge) parts.push(`تحدي: ${challenge}`);
+        if (gratitude) parts.push(`امتنان: ${gratitude}`);
+        return `- ${sentimentIcon} ${parts.join(' | ')}`;
+      })
+      .join('\n');
+  }
+
   safeTruncate(text, maxLength) {
     if (!text) return '';
     if (text.length <= maxLength) return text;
@@ -479,6 +522,14 @@ ${prompts[messageType] || prompts.default}
       context.activeIssues.forEach((issue) => {
         if (issue.issue_type) keywords.add(issue.issue_type);
         if (issue.issue_title) keywords.add(issue.issue_title);
+      });
+    }
+
+    if (Array.isArray(context.relationshipInsights)) {
+      context.relationshipInsights.forEach((entry) => {
+        if (entry.sentiment) keywords.add(entry.sentiment);
+        if (entry.positives_text) keywords.add('ايجابيات الزواج');
+        if (entry.challenges_text) keywords.add('تحديات الزواج');
       });
     }
 

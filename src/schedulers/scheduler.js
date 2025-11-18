@@ -20,6 +20,7 @@ import { AudioStoryService } from '../services/audioStoryService.js';
 import { SpiritualRoutineService } from '../services/spiritualRoutineService.js';
 import { ParentResourceService } from '../services/parentResourceService.js';
 import { WeeklyMilestoneCheckpointService } from '../services/weeklyMilestoneCheckpointService.js';
+import { CoupleInsightService } from '../services/coupleInsightService.js';
 
 export class Scheduler {
   constructor(bot, config) {
@@ -41,6 +42,7 @@ export class Scheduler {
     this.spiritualRoutine = null;
     this.parentResources = new ParentResourceService(bot, config);
     this.weeklyMilestones = new WeeklyMilestoneCheckpointService(bot, config);
+    this.coupleInsights = null;
     this.jobs = [];
   }
 
@@ -297,6 +299,28 @@ export class Scheduler {
         'Parent Course Recommendations',
         () => this.parentResources.sendWeeklyCourseRecommendations()
       );
+    }
+
+    if (this.config.couple_feedback?.enabled !== false) {
+      this.coupleInsights = new CoupleInsightService(this.bot, this.config);
+      const prompts = this.config.couple_feedback?.prompts?.length
+        ? this.config.couple_feedback.prompts
+        : [
+            { id: 'midweek_checkin', day: 'wed', time: '21:00', focus: 'checkin' }
+          ];
+
+      prompts.forEach((prompt, index) => {
+        const focus = prompt.focus || 'checkin';
+        const defaultDay = focus === 'gratitude' ? 5 : 3;
+        const cronDay = this.getDayNumber(prompt.day, defaultDay);
+        const sendTime = prompt.time || (focus === 'gratitude' ? '11:00' : '21:00');
+        const [hour, minute] = sendTime.split(':');
+        this.scheduleJob(
+          `${minute} ${hour} * * ${cronDay}`,
+          `Couple Feedback (${focus}) #${index + 1}`,
+          () => this.coupleInsights.sendPrompts(focus)
+        );
+      });
     }
 
     console.log(`✅ ${this.jobs.length} scheduled jobs initialized`);

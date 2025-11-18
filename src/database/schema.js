@@ -494,6 +494,27 @@ export const schema = {
       FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE,
       UNIQUE(child_id, generated_for)
     )
+  `,
+
+  // جدول ملاحظات العلاقة الزوجية
+  couple_feedback_logs: `
+    CREATE TABLE IF NOT EXISTS couple_feedback_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      family_id INTEGER NOT NULL,
+      guardian_id INTEGER NOT NULL,
+      partner_role TEXT,
+      sentiment TEXT DEFAULT 'neutral', -- positive, challenge, mixed, neutral
+      positives_text TEXT,
+      challenges_text TEXT,
+      gratitude_text TEXT,
+      source TEXT DEFAULT 'manual',
+      ai_summary TEXT,
+      followup_needed INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE,
+      FOREIGN KEY (guardian_id) REFERENCES guardians(id) ON DELETE CASCADE
+    )
   `
 };
 
@@ -546,6 +567,11 @@ export const indexes = [
   'CREATE INDEX IF NOT EXISTS idx_audio_stories_child ON child_audio_stories(child_id)',
   'CREATE INDEX IF NOT EXISTS idx_audio_stories_family ON child_audio_stories(family_id)',
   'CREATE INDEX IF NOT EXISTS idx_audio_stories_date ON child_audio_stories(generated_for)',
+
+  // فهارس سجل العلاقة الزوجية
+  'CREATE INDEX IF NOT EXISTS idx_couple_feedback_family ON couple_feedback_logs(family_id)',
+  'CREATE INDEX IF NOT EXISTS idx_couple_feedback_guardian ON couple_feedback_logs(guardian_id)',
+  'CREATE INDEX IF NOT EXISTS idx_couple_feedback_sentiment ON couple_feedback_logs(sentiment)',
 
   // فهارس الروتين الروحاني
   'CREATE INDEX IF NOT EXISTS idx_spiritual_logs_family ON spiritual_routine_logs(family_id)',

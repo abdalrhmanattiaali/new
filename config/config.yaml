@@ -436,6 +436,24 @@ parent_resources:
         - "تواصل زوجي"
         - "ذكاء عاطفي"
 
+# محادثات العلاقة الزوجية ومتابعة الشكاوى الإيجابية/السلبية
+couple_feedback:
+  enabled: true
+  history_window: 8           # كم إدخال سابق يظهر في السياق
+  prompts:
+    - id: midweek_checkin
+      day: wed               # مساء الأربعاء لفتح مساحة حديث صريح
+      time: "21:15"
+      focus: checkin
+    - id: friday_gratitude
+      day: fri               # قبل الويكند لتبادل الامتنان
+      time: "11:30"
+      focus: gratitude
+  buttons:
+    - "إيجابيات اليوم 🌟"
+    - "احتاج أفضفض 📝"
+    - "أشارك لاحقاً ⏰"
+
 # الاحتفالات الدورية
 celebrations:
   birthdays:

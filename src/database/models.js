@@ -531,6 +531,80 @@ export class ChildAudioStoryModel {
 }
 
 /**
+ * Couple Feedback Model
+ */
+export class CoupleFeedbackModel {
+  static logEntry({
+    familyId,
+    guardianId,
+    partnerRole = null,
+    sentiment = 'neutral',
+    positivesText = '',
+    challengesText = '',
+    gratitudeText = '',
+    source = 'manual',
+    aiSummary = null,
+    followupNeeded = 0
+  }) {
+    if (!familyId || !guardianId) {
+      return null;
+    }
+
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      INSERT INTO couple_feedback_logs (
+        family_id, guardian_id, partner_role, sentiment,
+        positives_text, challenges_text, gratitude_text,
+        source, ai_summary, followup_needed
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const result = stmt.run(
+      familyId,
+      guardianId,
+      partnerRole,
+      sentiment,
+      positivesText || null,
+      challengesText || null,
+      gratitudeText || null,
+      source,
+      aiSummary || null,
+      followupNeeded ? 1 : 0
+    );
+
+    return result.lastInsertRowid;
+  }
+
+  static getRecentByFamily(familyId, limit = 8) {
+    if (!familyId) return [];
+    const db = getDatabase();
+    return db
+      .prepare(
+        `SELECT *
+         FROM couple_feedback_logs
+         WHERE family_id = ?
+         ORDER BY created_at DESC
+         LIMIT ?`
+      )
+      .all(familyId, limit);
+  }
+
+  static getRecentByGuardian(guardianId, limit = 6) {
+    if (!guardianId) return [];
+    const db = getDatabase();
+    return db
+      .prepare(
+        `SELECT *
+         FROM couple_feedback_logs
+         WHERE guardian_id = ?
+         ORDER BY created_at DESC
+         LIMIT ?`
+      )
+      .all(guardianId, limit);
+  }
+}
+
+/**
  * Spiritual Routine Log Model
  */
 export class SpiritualRoutineLogModel {
@@ -626,6 +700,7 @@ export default {
   DailyTrackingModel,
   ScheduledMessageModel,
   ChildAudioStoryModel,
+  CoupleFeedbackModel,
   SpiritualRoutineLogModel,
   SpiritualCustomRequestModel
 };

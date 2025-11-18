@@ -9,7 +9,8 @@ import {
   ChildModel,
   InteractionModel,
   ScheduledMessageModel,
-  SpiritualRoutineLogModel
+  SpiritualRoutineLogModel,
+  CoupleFeedbackModel
 } from '../database/models.js';
 import { LLMService } from '../ai/llm.js';
 import { WeatherService } from './weatherService.js';
@@ -218,6 +219,7 @@ export class MessageEngine {
     }
 
     const activeIssues = this.getActiveIssuesForFamily(family?.id);
+    const relationshipInsights = this.getRelationshipInsightsForFamily(family?.id);
     const trackMetadata = this.getTrackMetadata(messageType);
     const preferredFormat = this.selectPreferredFormat(trackMetadata);
     const knowledgeHints = this.buildKnowledgeHints({
@@ -241,7 +243,9 @@ export class MessageEngine {
       trackMetadata,
       preferredFormat,
       configFormats: this.config.tracks?.formats || [],
-      knowledgeHints
+      knowledgeHints,
+      relationshipInsights,
+      familyId: family?.id
     };
   }
 
@@ -304,6 +308,12 @@ export class MessageEngine {
         }
       }
     }
+  }
+
+  getRelationshipInsightsForFamily(familyId) {
+    if (!familyId) return [];
+    const windowSize = this.config.couple_feedback?.history_window || 6;
+    return CoupleFeedbackModel.getRecentByFamily(familyId, windowSize);
   }
 
   buildKnowledgeHints({ trackMetadata, child, guardian, family, additionalContext, activeIssues }) {
