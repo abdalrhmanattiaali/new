@@ -4,7 +4,7 @@
  */
 
 import pkg from 'whatsapp-web.js';
-const { Client, LocalAuth, MessageMedia, Buttons, List } = pkg;
+const { Client, LocalAuth, MessageMedia, Buttons } = pkg;
 import qrcode from 'qrcode-terminal';
 import { EventEmitter } from 'events';
 import { describeRegistrySource, isGroupAllowed } from '../utils/groupRegistry.js';
@@ -188,6 +188,9 @@ export class WhatsAppBot extends EventEmitter {
 
   /**
    * Send a message with buttons (using list message)
+   * NOTE: WhatsApp Business accounts may block interactive payloads. In that case
+   * we gracefully fall back to plain text with enumerated options instead of
+   * throwing and losing the message.
    */
   async sendMessageWithButtons(to, text, buttons) {
     if (!this.isReady) {
@@ -210,38 +213,41 @@ export class WhatsAppBot extends EventEmitter {
         .map((button) => (typeof button === 'string' ? button.trim() : ''))
         .filter(Boolean);
 
+      // If no interactive options, send plain text.
       if (!normalizedButtons.length) {
         await this.client.sendMessage(chatId, text);
         console.log(`✅ Message sent to ${to} without interactive buttons`);
         return true;
       }
 
-      if (normalizedButtons.length <= 3) {
+      // If there are too many buttons (lists can be blocked), fall back to text with numbered options.
+      if (normalizedButtons.length > 3) {
+        const fallback = `${text}\n\n${normalizedButtons
+          .map((label, idx) => `${idx + 1}. ${label}`)
+          .join('\n')}`;
+        await this.client.sendMessage(chatId, fallback);
+        console.log(`✅ Message sent to ${to} with text-based options (list fallback)`);
+        return true;
+      }
+
+      // Try sending regular Buttons for up to 3 options; if WhatsApp rejects, fall back to text.
+      try {
         const buttonInstances = normalizedButtons.map((label) => ({ body: label }));
         const buttonMessage = new Buttons(text, buttonInstances, '', 'اختر الإجراء المناسب');
         await this.client.sendMessage(chatId, buttonMessage);
-      } else {
-        const rows = normalizedButtons.map((label, index) => ({
-          id: `OPTION_${index + 1}`,
-          title: label.slice(0, 24) || `خيار ${index + 1}`,
-          description: label.length > 24 ? label.slice(24, 120) : ''
-        }));
-        const listMessage = new List(
-          text,
-          'اختر متابعة',
-          [
-            {
-              title: 'خيارات المتابعة',
-              rows
-            }
-          ],
-          'تفاعل مع الرسالة',
-          'استخدم القائمة لاختيار ما يناسبك'
+        console.log(`✅ Message with buttons sent to ${to}`);
+        return true;
+      } catch (interactiveError) {
+        console.warn(
+          `⚠️ sendMessageWithButtons interactive payload rejected for ${to}: ${interactiveError?.message || interactiveError}`
         );
-        await this.client.sendMessage(chatId, listMessage);
+        const fallback = `${text}\n\n${normalizedButtons
+          .map((label, idx) => `${idx + 1}. ${label}`)
+          .join('\n')}`;
+        await this.client.sendMessage(chatId, fallback);
+        console.log(`✅ Message sent to ${to} with text-based options after fallback`);
+        return true;
       }
-      console.log(`✅ Message with buttons sent to ${to}`);
-      return true;
     } catch (error) {
       console.error(`❌ Error sending message with buttons to ${to}:`, error);
       throw error;
