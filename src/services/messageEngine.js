@@ -3,11 +3,86 @@
  * محرك توليد وإرسال الرسائل اليومية
  */
 
-import { FamilyModel, GuardianModel, ChildModel, ScheduledMessageModel } from '../database/models.js';
+import {
+  FamilyModel,
+  GuardianModel,
+  ChildModel,
+  InteractionModel,
+  ScheduledMessageModel,
+  SpiritualRoutineLogModel,
+  CoupleFeedbackModel
+} from '../database/models.js';
 import { LLMService } from '../ai/llm.js';
 import { WeatherService } from './weatherService.js';
-import { format, addHours } from 'date-fns';
-import { formatInTimeZone } from 'date-fns-tz';
+import { format } from 'date-fns';
+import { getDatabase } from '../database/init.js';
+
+const TRACK_METADATA = {
+  child_sleep: {
+    title: 'نوم الطفل',
+    category: 'child',
+    tone: 'هادئ ومطمئن',
+    focus: 'تعزيز روتين نوم متوازن وتخفيف التوتر قبل النوم',
+    keywords: ['نوم', 'روتين', 'تهدئة', 'استرخاء'],
+    preferredFormat: 'checklist'
+  },
+  child_nutrition: {
+    title: 'تغذية الطفل',
+    category: 'child',
+    tone: 'مشجع وعملي',
+    focus: 'تنويع الوجبات وتشجيع التجربة الإيجابية',
+    keywords: ['تغذية', 'وجبة', 'خضروات', 'بروتين'],
+    preferredFormat: 'checklist'
+  },
+  child_play: {
+    title: 'لعب الطفل',
+    category: 'child',
+    tone: 'مرح ومحفّز',
+    focus: 'أنشطة لعب بسيطة تنمّي مهارة محددة',
+    keywords: ['لعب', 'نشاط', 'مهارات', 'تنمية'],
+    preferredFormat: 'text'
+  },
+  child_language: {
+    title: 'تطوير اللغة',
+    category: 'child',
+    tone: 'داعم وتفاعلي',
+    focus: 'تشجيع الحوار والقراءة المشتركة',
+    keywords: ['لغة', 'كلمات', 'تواصل', 'قصة'],
+    preferredFormat: 'text'
+  },
+  parents_mental: {
+    title: 'الصحة النفسية للوالدين',
+    category: 'parents',
+    tone: 'حنون ومطمئن',
+    focus: 'تنظيم التنفس وتخفيف الضغط اليومي',
+    keywords: ['استرخاء', 'تنفس', 'دعم', 'طاقة'],
+    preferredFormat: 'quick_tip'
+  },
+  weekend_movies: {
+    title: 'أفلام نهاية الأسبوع',
+    category: 'family',
+    tone: 'حيوي ومتحمس',
+    focus: 'اختيار أفلام عائلية ممتعة ومناسبة',
+    keywords: ['فيلم', 'نهاية الأسبوع', 'ترفيه'],
+    preferredFormat: 'checklist'
+  },
+  weekend_outings: {
+    title: 'خروجات عائلية',
+    category: 'family',
+    tone: 'مغامر وودود',
+    focus: 'تخطيط خروجة بسيطة تناسب الطقس والميزانية',
+    keywords: ['خروجة', 'نشاط', 'عائلة', 'هواء طلق'],
+    preferredFormat: 'checklist'
+  },
+  weekly_report: {
+    title: 'التقرير الأسبوعي',
+    category: 'summary',
+    tone: 'احترافي وداعم',
+    focus: 'تلخيص الإنجازات والتحديات مع هدف الأسبوع القادم',
+    keywords: ['تقرير', 'إنجاز', 'هدف', 'مراجعة'],
+    preferredFormat: 'text'
+  }
+};
 
 export class MessageEngine {
   constructor(bot, config) {
@@ -132,22 +207,171 @@ export class MessageEngine {
     return distribution;
   }
 
+  async buildLLMContext({ guardian, family, child, messageType, timeOfDay, additionalContext }) {
+    const memoryLimit = this.config.ai?.memory?.max_messages || 50;
+    const childAge = this.calculateAge(child.birth_date);
+    const childDay = this.calculateDayOfLife(child.birth_date);
+
+    let previousInteractions = [];
+    if (guardian) {
+      previousInteractions = InteractionModel.getByGuardian(guardian.id, memoryLimit);
+    } else if (family) {
+      previousInteractions = InteractionModel.getByFamily(family.id, memoryLimit);
+    }
+
+    const notificationStats = family
+      ? InteractionModel.getFamilyNotificationStats(family.id, messageType, 45)
+      : null;
+
+    const activeIssues = this.getActiveIssuesForFamily(family?.id);
+    const relationshipInsights = this.getRelationshipInsightsForFamily(family?.id);
+    const trackMetadata = this.getTrackMetadata(messageType);
+    const preferredFormat = this.selectPreferredFormat(trackMetadata);
+    const knowledgeHints = this.buildKnowledgeHints({
+      trackMetadata,
+      child,
+      guardian,
+      family,
+      additionalContext,
+      activeIssues
+    });
+
+    return {
+      messageType,
+      guardianName: guardian ? guardian.name : family?.family_name,
+      childName: child.name,
+      childAge,
+      childDay,
+      timeOfDay,
+      additionalContext,
+      previousInteractions,
+      activeIssues,
+      trackMetadata,
+      preferredFormat,
+      configFormats: this.config.tracks?.formats || [],
+      knowledgeHints,
+      relationshipInsights,
+      notificationStats,
+      familyId: family?.id
+    };
+  }
+
+  getTrackMetadata(messageType) {
+    return TRACK_METADATA[messageType] || {
+      title: 'رسالة مخصصة',
+      category: 'general',
+      tone: 'ودود وداعم',
+      focus: 'تقديم دعم عائلي مخصص',
+      keywords: [],
+      preferredFormat: 'text'
+    };
+  }
+
+  selectPreferredFormat(trackMetadata = {}) {
+    if (trackMetadata.preferredFormat) {
+      return trackMetadata.preferredFormat;
+    }
+
+    const formats = this.config.tracks?.formats;
+    if (Array.isArray(formats) && formats.length > 0) {
+      return formats[0];
+    }
+
+    return 'text';
+  }
+
+  getActiveIssuesForFamily(familyId) {
+    if (!familyId) return [];
+
+    let db;
+    try {
+      db = getDatabase();
+      const rows = db.prepare(`
+        SELECT
+          i.id,
+          i.issue_type,
+          i.issue_title,
+          i.status,
+          i.severity,
+          i.treatment_plan,
+          i.progress_percentage,
+          c.name AS child_name
+        FROM child_issues i
+        INNER JOIN children c ON c.id = i.child_id
+        WHERE i.family_id = ? AND i.status IN ('active', 'monitoring')
+        ORDER BY i.updated_at DESC
+        LIMIT 10
+      `).all(familyId);
+      return rows;
+    } catch (error) {
+      console.warn('MessageEngine: failed to load active child issues:', error.message);
+      return [];
+    } finally {
+      if (db) {
+        try {
+          db.close();
+        } catch (closeError) {
+          console.warn('MessageEngine: failed to close database connection:', closeError.message);
+        }
+      }
+    }
+  }
+
+  getRelationshipInsightsForFamily(familyId) {
+    if (!familyId) return [];
+    const windowSize = this.config.couple_feedback?.history_window || 6;
+    return CoupleFeedbackModel.getRecentByFamily(familyId, windowSize);
+  }
+
+  buildKnowledgeHints({ trackMetadata, child, guardian, family, additionalContext, activeIssues }) {
+    const hints = new Set();
+
+    if (trackMetadata?.focus) hints.add(trackMetadata.focus);
+    if (trackMetadata?.category) hints.add(trackMetadata.category);
+    if (child?.name) hints.add(child.name);
+    if (child?.development_stage) hints.add(child.development_stage);
+    if (guardian?.role) hints.add(guardian.role === 'father' ? 'الأب' : 'الأم');
+    if (family?.family_name) hints.add(`عائلة ${family.family_name}`);
+
+    if (additionalContext) {
+      additionalContext
+        .toString()
+        .split(/[^\w\u0621-\u064A]+/)
+        .filter(Boolean)
+        .slice(0, 5)
+        .forEach((word) => hints.add(word));
+    }
+
+    if (Array.isArray(activeIssues)) {
+      activeIssues.forEach((issue) => {
+        if (issue.issue_type) hints.add(issue.issue_type);
+        if (issue.child_name) hints.add(issue.child_name);
+      });
+    }
+
+    return Array.from(hints).filter(Boolean).slice(0, 10);
+  }
+
   /**
    * Schedule a single message
    */
   async scheduleMessage(guardian, child, messageType, time, timezone) {
-    const childAge = this.calculateAge(child.birth_date);
     const timeOfDay = this.getTimeOfDay(time);
 
-    // Generate message using LLM
-    const context = {
+    const family = FamilyModel.getById(guardian.family_id);
+    if (!family) {
+      console.warn(`MessageEngine: family not found for guardian ${guardian.id}`);
+      return;
+    }
+
+    const context = await this.buildLLMContext({
+      guardian,
+      family,
+      child,
       messageType,
-      guardianName: guardian.name,
-      childName: child.name,
-      childAge,
       timeOfDay,
       additionalContext: null
-    };
+    });
 
     const messageContent = await this.llm.generateMessage(context);
 
@@ -198,6 +422,9 @@ export class MessageEngine {
 
     console.log(`📨 Found ${pendingMessages.length} pending messages`);
 
+    // Avoid sending multiple notifications back-to-back to the same destination
+    const destinationLock = new Set();
+
     for (const message of pendingMessages) {
       try {
         const guardian = GuardianModel.getById(message.guardian_id);
@@ -205,6 +432,20 @@ export class MessageEngine {
 
         const family = FamilyModel.getById(guardian.family_id);
         if (!family) continue;
+
+        const destination =
+          family.send_to_group && family.family_group_id
+            ? `group:${family.family_group_id}`
+            : `guardian:${guardian.id}`;
+
+        if (destinationLock.has(destination)) {
+          console.log(
+            `⏸️ Skipping message ${message.id} for ${destination} to avoid back-to-back notifications`
+          );
+          continue;
+        }
+
+        destinationLock.add(destination);
 
         // Send message with buttons
         const buttons = message.buttons ? JSON.parse(message.buttons) : [];
@@ -228,8 +469,21 @@ export class MessageEngine {
           console.log(`✅ Sent ${message.message_type} to ${guardian.name}`);
         }
 
+        // Log interaction for follow-up buttons
+        InteractionModel.create(
+          guardian.family_id,
+          guardian.id,
+          message.message_type,
+          this.formatMessageWithButtons(message.message_content, buttons),
+          null
+        );
+
         // Mark as sent
         ScheduledMessageModel.markAsSent(message.id);
+
+        if (message.message_type?.startsWith('spiritual_routine')) {
+          SpiritualRoutineLogModel.markDeliveredByScheduledMessage(message.id);
+        }
 
         // Wait a bit to avoid rate limiting
         await this.sleep(1000);
@@ -238,6 +492,18 @@ export class MessageEngine {
         console.error(`Error sending message ${message.id}:`, error);
       }
     }
+  }
+
+  formatMessageWithButtons(content, buttons = []) {
+    if (!buttons || buttons.length === 0) {
+      return content;
+    }
+
+    const enumerated = buttons
+      .map((button, index) => `${index + 1}. ${button}`)
+      .join('\n');
+
+    return `${content}\n\n${enumerated}`.trim();
   }
 
   /**
@@ -258,6 +524,18 @@ export class MessageEngine {
     } else {
       return `${years} سنوات`;
     }
+  }
+
+  /**
+   * Calculate child's day of life (starts at day 1)
+   */
+  calculateDayOfLife(birthDate) {
+    if (!birthDate) return null;
+    const birth = new Date(birthDate);
+    if (Number.isNaN(birth.getTime())) return null;
+    const now = new Date();
+    const diffDays = Math.floor((now.getTime() - birth.getTime()) / (1000 * 60 * 60 * 24));
+    return diffDays + 1;
   }
 
   /**
@@ -309,18 +587,23 @@ export class MessageEngine {
    * Generate instant message (on-demand)
    */
   async generateInstantMessage(guardian, child, messageType) {
-    const childAge = this.calculateAge(child.birth_date);
     const now = new Date();
     const timeOfDay = this.getTimeOfDay(format(now, 'HH:mm'));
 
-    const context = {
+    const family = FamilyModel.getById(guardian.family_id);
+    if (!family) {
+      console.warn(`MessageEngine: family not found for guardian ${guardian.id}`);
+      return;
+    }
+
+    const context = await this.buildLLMContext({
+      guardian,
+      family,
+      child,
       messageType,
-      guardianName: guardian.name,
-      childName: child.name,
-      childAge,
       timeOfDay,
       additionalContext: null
-    };
+    });
 
     const messageContent = await this.llm.generateMessage(context);
     const buttons = this.config.ui?.buttons || ['تم ✅', 'ذكّرني لاحقاً ⏰'];
@@ -362,7 +645,6 @@ export class MessageEngine {
    * Schedule a message for family group
    */
   async scheduleGroupMessage(family, child, messageType, time, timezone) {
-    const childAge = this.calculateAge(child.birth_date);
     const timeOfDay = this.getTimeOfDay(time);
 
     // Get weather info
@@ -376,15 +658,14 @@ export class MessageEngine {
       weatherContext = `الطقس: ${weather.temp}°م - ${activity.suggestion}`;
     }
 
-    // Generate message using LLM
-    const context = {
+    const context = await this.buildLLMContext({
+      guardian: null,
+      family,
+      child,
       messageType,
-      guardianName: family.family_name,
-      childName: child.name,
-      childAge,
       timeOfDay,
       additionalContext: weatherContext
-    };
+    });
 
     let messageContent = await this.llm.generateMessage(context);
 

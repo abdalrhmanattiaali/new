@@ -6,7 +6,8 @@
 import { FamilyModel, GuardianModel, ChildModel, ScheduledMessageModel } from '../database/models.js';
 import { LLMService } from '../ai/llm.js';
 import { WeatherService } from './weatherService.js';
-import { format, addHours } from 'date-fns';
+import PresenceService from './presenceService.js';
+import { format } from 'date-fns';
 
 export class DailyMessageService {
   constructor(bot, config) {
@@ -14,6 +15,7 @@ export class DailyMessageService {
     this.config = config;
     this.llm = new LLMService(config);
     this.weatherService = new WeatherService(config);
+    this.presenceService = new PresenceService();
   }
 
   /**
@@ -49,6 +51,10 @@ export class DailyMessageService {
     const child = children[0];
     const father = guardians.find(g => g.role === 'father');
     const mother = guardians.find(g => g.role === 'mother');
+
+    if (father) {
+      await this.ensureFatherPresencePrompt(family, father, child);
+    }
 
     // الحصول على توزيع الرسائل من الإعدادات
     const distribution = this.config.tracks?.distribution || {
@@ -129,6 +135,14 @@ export class DailyMessageService {
     return availableSlots[Math.floor(Math.random() * availableSlots.length)];
   }
 
+  async ensureFatherPresencePrompt(family, father, child) {
+    const prompt = this.presenceService.buildPromptIfNeeded(father.id, father.name, child?.name);
+    if (!prompt) return;
+
+    const time = this.getRandomTimeSlot('morning');
+    await this.scheduleMessage(family, prompt, 'father_presence_check', time, 'father');
+  }
+
   /**
    * جدولة رسالة خاصة بالطفل
    */
@@ -194,13 +208,15 @@ export class DailyMessageService {
   async scheduleFatherMessage(family, father, child, messageType, time) {
     const childAge = this.calculateAgeInMonths(child.birth_date);
     const timeOfDay = this.getTimeOfDay(time);
+    const presenceContext = this.presenceService.buildContext(father.id);
 
     const messageContent = await this.generateFatherMessage(
       father.name,
       child.name,
       childAge,
       messageType,
-      timeOfDay
+      timeOfDay,
+      presenceContext
     );
 
     await this.scheduleMessage(
@@ -357,7 +373,14 @@ export class DailyMessageService {
   /**
    * توليد رسالة للأب بالذكاء الاصطناعي
    */
-  async generateFatherMessage(fatherName, childName, childAge, messageType, timeOfDay) {
+  async generateFatherMessage(
+    fatherName,
+    childName,
+    childAge,
+    messageType,
+    timeOfDay,
+    presenceContext
+  ) {
     const prompts = {
       father_involvement: `اكتب رسالة محفزة (3-4 جمل) للأب ${fatherName} عن المشاركة الفعالة.
         - نشاط بسيط مع ${childName}
@@ -390,7 +413,14 @@ export class DailyMessageService {
         - استراتيجية بسيطة`
     };
 
-    const prompt = prompts[messageType] || prompts.father_involvement;
+    const presenceHint = presenceContext?.description ||
+      'إذا كان الأب خارج المنزل قدم أفكار دعم عن بعد، وإذا كان في البيت اقترح تواصل مباشر.';
+    const presenceTag = presenceContext?.summary || 'لا يوجد سجل تواجد متاح.';
+    const prompt = `${prompts[messageType] || prompts.father_involvement}
+
+سجل التواجد: ${presenceTag}
+- اضبط النصيحة بناءً على تواجد الأب حالياً (في البيت = تفاعل مباشر، خارج البيت = دعم عن بعد + تقدير لتعبه)
+- اجعل الرسالة لطيفة وتذكر أن خروجه من البيت لصالح العائلة، مع لمسة امتنان للشريك.`;
 
     try {
       const message = await this.llm.generateMessage({
@@ -399,7 +429,7 @@ export class DailyMessageService {
         childName,
         childAge: this.formatAge(childAge),
         timeOfDay,
-        additionalContext: prompt
+        additionalContext: `${prompt}\n\n${presenceHint}`
       });
 
       return `💙 *رسالة خاصة للأب*\n\n${message}`;

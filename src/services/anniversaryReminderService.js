@@ -46,6 +46,10 @@ export class AnniversaryReminderService {
       `).all();
 
       for (const reminder of reminders) {
+        if (this.shouldSkipReminder(reminder.reminder_type)) {
+          continue;
+        }
+
         const anniversaryDate = new Date(reminder.anniversary_date);
         const daysUntil = this.getDaysUntilAnniversary(anniversaryDate, today);
 
@@ -102,8 +106,10 @@ export class AnniversaryReminderService {
       reminder.family_name
     );
 
+    const finalMessage = this.applyFriendlyClosing(reminder.reminder_type, message);
+
     // Send message
-    await this.sendToFamily(reminder.family_group_id, reminder.send_to_group, message);
+    await this.sendToFamily(reminder.family_group_id, reminder.send_to_group, finalMessage);
 
     // Update last_reminded_year
     db.prepare(`
@@ -144,10 +150,42 @@ export class AnniversaryReminderService {
       reminder.family_name
     );
 
+    const finalMessage = this.applyFriendlyClosing(reminder.reminder_type, message);
+
     // Send message
-    await this.sendToFamily(reminder.family_group_id, reminder.send_to_group, message);
+    await this.sendToFamily(reminder.family_group_id, reminder.send_to_group, finalMessage);
 
     console.log(`🎉 Sent celebration message: ${reminder.reminder_type} for family ${reminder.family_name}`);
+  }
+
+  shouldSkipReminder(reminderType) {
+    if (!reminderType) return false;
+
+    if (reminderType.startsWith('birthday')) {
+      return this.config?.celebrations?.birthdays?.enabled === false;
+    }
+
+    if (reminderType === 'marriage_anniversary') {
+      return this.config?.celebrations?.marriage?.enabled === false;
+    }
+
+    return false;
+  }
+
+  applyFriendlyClosing(reminderType, message) {
+    if (!reminderType?.startsWith('birthday')) {
+      return message;
+    }
+
+    const closing =
+      this.config?.celebrations?.birthdays?.friendly_closing ||
+      '🎁 فكرة لطيفة: جهزوا بطاقة أو تسجيل صوتي قصير من العائلة وارسلوه لصاحب العيد اليوم.';
+
+    if (message.includes(closing)) {
+      return message;
+    }
+
+    return `${message}\n\n${closing}`;
   }
 
   /**
