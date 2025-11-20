@@ -313,6 +313,17 @@ export class Scheduler {
         'Parent Course Recommendations',
         () => this.parentResources.sendWeeklyCourseRecommendations()
       );
+
+      const videoConfig = this.config.parent_resources?.videos || {};
+      if (videoConfig.enabled !== false) {
+        const videoTime = videoConfig.time || '19:45';
+        const [vHour, vMinute] = videoTime.split(':');
+        this.scheduleJob(
+          `${vMinute} ${vHour} * * *`,
+          'Parent Video Picks',
+          () => this.parentResources.sendVideoRecommendationsIfDue()
+        );
+      }
     }
 
     if (this.config.couple_feedback?.enabled !== false) {

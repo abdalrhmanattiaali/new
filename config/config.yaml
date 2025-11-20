@@ -436,6 +436,23 @@ parent_resources:
       shared:
         - "تواصل زوجي"
         - "ذكاء عاطفي"
+  videos:
+    enabled: true
+    time: "19:45"           # توصيات فيديو خفيفة قبل نهاية اليوم
+    min_gap_days: 3
+    max_gap_days: 5
+    allowed_domains:
+      - "youtube.com"
+      - "youtu.be"
+      - "facebook.com"
+      - "fb.watch"
+    fallback_links:
+      - "https://www.youtube.com/watch?v=ah4bUxlN-6M"
+      - "https://www.youtube.com/watch?v=EPsyG2fAukM"
+    buttons:
+      - "شاهده الآن ▶️"
+      - "أرسله للشريك 🤝"
+      - "ذكرني لاحقاً ⏰"
 
 # محادثات العلاقة الزوجية ومتابعة الشكاوى الإيجابية/السلبية
 couple_feedback:

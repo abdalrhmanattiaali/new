@@ -85,6 +85,37 @@ export class ParentResourceService {
     }
   }
 
+  async sendVideoRecommendationsIfDue() {
+    if (this.config.parent_resources?.enabled === false) return;
+
+    const videosConfig = this.config.parent_resources?.videos || {};
+    if (videosConfig.enabled === false) return;
+
+    const minGap = videosConfig.min_gap_days ?? 3;
+    const maxGap = videosConfig.max_gap_days ?? 5;
+    const families = FamilyModel.getAll();
+
+    for (const family of families) {
+      if (!family.onboarding_completed) continue;
+
+      const child = this.getPrimaryChild(family.id);
+      if (!child) continue;
+
+      const lastLog = ParentResourceLogModel.getLastSent(family.id, 'video');
+      const gapTarget = lastLog?.metadata?.gap_target_days || this.randomBetween(minGap, maxGap);
+
+      if (lastLog) {
+        const daysSince = differenceInCalendarDays(new Date(), new Date(lastLog.sent_at));
+        if (daysSince < gapTarget) {
+          continue;
+        }
+      }
+
+      await this.sendVideoRecommendation(family, child, videosConfig, gapTarget);
+      await this.sleep(600);
+    }
+  }
+
   async sendBookRecommendation(family, child, booksConfig, gapTarget) {
     const topics = (booksConfig.topics || []).join(', ');
 
@@ -176,6 +207,70 @@ export class ParentResourceService {
     });
   }
 
+  async sendVideoRecommendation(family, child, videosConfig, gapTarget) {
+    const allowedDomains = videosConfig.allowed_domains || ['youtube.com', 'youtu.be', 'facebook.com', 'fb.watch'];
+    const guardians = GuardianModel.getByFamily(family.id) || [];
+    const notificationStats = InteractionModel.getFamilyNotificationStats(family.id, 'parent_video', 45);
+    const childDay = this.calculateDayOfLife(child.birth_date);
+
+    const context = {
+      messageType: 'parent_video',
+      guardianName: family.family_name,
+      childName: child.name,
+      childAge: this.calculateAge(child.birth_date),
+      childDay,
+      timeOfDay: 'المساء',
+      additionalContext: `روابط مسموحة فقط من: ${allowedDomains.join(', ')}`,
+      trackMetadata: {
+        title: 'فيديو اليوم',
+        category: 'parents_learning',
+        tone: 'خفيف وتفاعلي',
+        focus: 'فيديو ممتع أو مريح أو تعليمي يمكن مشاهدته اليوم'
+      },
+      relationshipInsights: this.getRelationshipInsights(family.id),
+      notificationStats,
+      familyId: family.id
+    };
+
+    let message;
+    try {
+      message = await this.llm.generateMessage(context);
+    } catch (error) {
+      console.error('Error generating video recommendation:', error);
+      message = '🎥 فيديو اليوم: استمتعوا بمشاهدة حلقة خفيفة عن التواصل الهادئ مع الطفل. رابط سريع: https://www.youtube.com/watch?v=ah4bUxlN-6M';
+    }
+
+    const link = this.extractAllowedLink(message, allowedDomains);
+    let finalMessage = message;
+    const fallbackLink = this.chooseFallbackLink(videosConfig);
+    const usedFallback = !link && fallbackLink;
+
+    if (usedFallback) {
+      finalMessage = `${message}\n\n🔗 رابط موثوق: ${fallbackLink}`;
+    }
+
+    if (family.send_to_group && family.family_group_id) {
+      await this.bot.sendMessageToGroup(family.family_group_id, finalMessage);
+      InteractionModel.create(family.id, null, 'parent_video', finalMessage, null);
+    } else {
+      for (const guardian of guardians) {
+        if (!guardian.notification_enabled || !guardian.phone_number) continue;
+        if (videosConfig.buttons?.length) {
+          await this.bot.sendMessageWithButtons(guardian.phone_number, finalMessage, videosConfig.buttons);
+        } else {
+          await this.bot.sendMessage(guardian.phone_number, finalMessage);
+        }
+        InteractionModel.create(family.id, guardian.id, 'parent_video', finalMessage, null);
+      }
+    }
+
+    ParentResourceLogModel.log(family.id, 'video', this.extractTitle(finalMessage), {
+      gap_target_days: gapTarget,
+      allowed_domains: allowedDomains,
+      fallback_used: Boolean(usedFallback)
+    });
+  }
+
   async dispatchToFamily(family, message, buttons = []) {
     if (family.send_to_group && family.family_group_id) {
       await this.bot.sendMessageToGroup(family.family_group_id, message);
@@ -222,6 +317,30 @@ export class ParentResourceService {
     const boldMatch = message.match(/\*\*(.+?)\*\*/);
     if (boldMatch) return boldMatch[1];
     return message.split('\n')[0]?.replace(/[*_]/g, '').trim().slice(0, 80) || 'resource';
+  }
+
+  extractAllowedLink(message = '', allowedDomains = []) {
+    if (!message) return null;
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    let match;
+    while ((match = urlRegex.exec(message)) !== null) {
+      try {
+        const url = new URL(match[0]);
+        const host = url.hostname.toLowerCase();
+        const valid = allowedDomains.some((domain) => host.includes(domain.toLowerCase()));
+        if (valid) return url.toString();
+      } catch (error) {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  chooseFallbackLink(videosConfig = {}) {
+    const links = videosConfig.fallback_links || [];
+    if (!links.length) return null;
+    const index = Math.floor(Math.random() * links.length);
+    return links[index];
   }
 
   randomBetween(min, max) {
