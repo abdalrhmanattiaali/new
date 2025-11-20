@@ -422,6 +422,9 @@ export class MessageEngine {
 
     console.log(`📨 Found ${pendingMessages.length} pending messages`);
 
+    // Avoid sending multiple notifications back-to-back to the same destination
+    const destinationLock = new Set();
+
     for (const message of pendingMessages) {
       try {
         const guardian = GuardianModel.getById(message.guardian_id);
@@ -429,6 +432,20 @@ export class MessageEngine {
 
         const family = FamilyModel.getById(guardian.family_id);
         if (!family) continue;
+
+        const destination =
+          family.send_to_group && family.family_group_id
+            ? `group:${family.family_group_id}`
+            : `guardian:${guardian.id}`;
+
+        if (destinationLock.has(destination)) {
+          console.log(
+            `⏸️ Skipping message ${message.id} for ${destination} to avoid back-to-back notifications`
+          );
+          continue;
+        }
+
+        destinationLock.add(destination);
 
         // Send message with buttons
         const buttons = message.buttons ? JSON.parse(message.buttons) : [];
