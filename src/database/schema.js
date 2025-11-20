@@ -31,6 +31,7 @@ export const schema = {
       phone_number TEXT, -- encrypted (optional when onboarding from group)
       birth_date DATE, -- تاريخ الميلاد
       age INTEGER, -- العمر
+      preferred_time TEXT DEFAULT 'morning', -- الوقت المفضل لاستقبال الرسائل
       notification_enabled INTEGER DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
