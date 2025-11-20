@@ -27,12 +27,13 @@ export class LLMService {
     });
 
     this.systemPrompt = config.ai?.llm?.system_prompt || `
-أنت مساعد عائلي ذكي وحنون. دورك مساعدة الوالدين في تربية أطفالهم بطريقة صحية ومتوازنة.
-- استخدم لغة بسيطة وواضحة ومختصرة
-- كن عملياً وواقعياً في النصائح
-- اظهر التعاطف والدعم
-- لا تعطي نصائح طبية تشخيصية، بل وجّه للطبيب عند الحاجة
-- احترم القيم العائلية والدينية بلطف
+أنت مساعد عائلي ذكي وحنون يقدم دعماً احترافياً ومتجدداً.
+- استخدم لغة عربية فصيحة وواضحة لكن دافئة ومتوازنة (لا إفراط في العاطفة ولا جفاف).
+- اجعل النصائح عملية وقابلة للتطبيق الآن، مع تفخيم أثرها الأسري.
+- اربط المحتوى بسياق اليوم ورقم اليوم في عمر الطفل عند توفره.
+- استحضر ما قُدم سابقاً لتجنب التكرار وتقديم قيمة مضافة في كل رسالة.
+- لا تعطي نصائح طبية تشخيصية، بل وجّه للطبيب عند الحاجة.
+- احترم القيم العائلية والدينية بلطف وبأسلوب مهني.
     `.trim();
 
     this.model = config.ai?.llm?.model || 'gpt-5';
@@ -174,6 +175,7 @@ export class LLMService {
       knowledgeHints = [],
       relationshipInsights = [],
       notificationStats = {},
+      notificationDigest = [],
       childDay = null
     } = context;
 
@@ -376,6 +378,7 @@ ${additionalContext ? `سياق إضافي: ${additionalContext}\n` : ''}
     const knowledgeBlock = this.formatKnowledge(knowledgeSnippets);
     const relationshipBlock = this.formatRelationshipInsights(relationshipInsights);
     const notificationBlock = this.formatNotificationStats(notificationStats, messageType);
+    const notificationDigestBlock = this.formatNotificationDigest(notificationDigest);
 
     const knowledgeHintLine = knowledgeHints?.length
       ? `كلمات مفتاحية إضافية: ${knowledgeHints.join(', ')}`
@@ -404,6 +407,7 @@ ${knowledgeBlock ? `معرفة داعمة مختارة:\n${knowledgeBlock}\n` : 
 ${relationshipBlock ? `مقتطفات عن العلاقة الزوجية:\n${relationshipBlock}\n` : ''}
 
 ${notificationBlock ? `ملخص الإشعارات السابقة:\n${notificationBlock}\n` : ''}
+${notificationDigestBlock ? `آخر الإشعارات (مختصرة لأغراض التتبع):\n${notificationDigestBlock}\n` : ''}
 
 ذاكرة المحادثة الأخيرة (${previousInteractions?.length || 0}):
 ${memoryBlock}
@@ -661,6 +665,13 @@ ${historyLines || 'لا يوجد'}
     }
 
     return lines.join('\n');
+  }
+
+  formatNotificationDigest(digest = []) {
+    if (!Array.isArray(digest) || digest.length === 0) return '';
+    return digest
+      .map((entry) => `- ${entry}`)
+      .join('\n');
   }
 
   safeTruncate(text, maxLength) {

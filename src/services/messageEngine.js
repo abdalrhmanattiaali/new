@@ -222,6 +222,9 @@ export class MessageEngine {
     const notificationStats = family
       ? InteractionModel.getFamilyNotificationStats(family.id, messageType, 45)
       : null;
+    const notificationDigest = family
+      ? this.buildNotificationDigest(family.id, notificationStats)
+      : [];
 
     const activeIssues = this.getActiveIssuesForFamily(family?.id);
     const relationshipInsights = this.getRelationshipInsightsForFamily(family?.id);
@@ -252,8 +255,36 @@ export class MessageEngine {
       knowledgeHints,
       relationshipInsights,
       notificationStats,
+      notificationDigest,
       familyId: family?.id
     };
+  }
+
+  buildNotificationDigest(familyId, notificationStats) {
+    const digestLimit = this.config.ai?.memory?.notification_digest_limit || 18;
+    const recent = InteractionModel.getRecentNotificationDigest(familyId, digestLimit);
+    if (!recent.length) return [];
+
+    const typeCounters = {};
+    const totals = notificationStats?.typeCounts || {};
+
+    return recent.map((entry) => {
+      const type = entry.message_type || 'general';
+      typeCounters[type] = (typeCounters[type] || 0) + 1;
+
+      const totalForType = totals[type]?.count;
+      const sequence =
+        typeof totalForType === 'number'
+          ? `${type}#${Math.max(totalForType - typeCounters[type] + 1, 1)}`
+          : `${type}#r${typeCounters[type]}`;
+
+      const timestamp = entry.created_at
+        ? format(new Date(entry.created_at), 'dd MMM HH:mm')
+        : 'بدون وقت';
+
+      const snippet = this.truncateText(entry.message_content);
+      return `${sequence} @ ${timestamp}: ${snippet}`;
+    });
   }
 
   getTrackMetadata(messageType) {
@@ -512,18 +543,22 @@ export class MessageEngine {
   calculateAge(birthDate) {
     const birth = new Date(birthDate);
     const now = new Date();
-    const years = now.getFullYear() - birth.getFullYear();
-    const months = now.getMonth() - birth.getMonth();
+    const diffDays = Math.floor((now.getTime() - birth.getTime()) / (1000 * 60 * 60 * 24));
 
-    if (years === 0) {
-      return `${months} شهر`;
-    } else if (years === 1) {
-      return 'سنة واحدة';
-    } else if (years === 2) {
-      return 'سنتان';
-    } else {
-      return `${years} سنوات`;
+    if (Number.isNaN(diffDays) || diffDays < 0) return 'عمر غير معروف';
+    if (diffDays < 90) {
+      return `${diffDays} يوم`;
     }
+
+    const monthsTotal = Math.floor(diffDays / 30);
+    if (monthsTotal < 12) {
+      return `${monthsTotal} شهر`;
+    }
+
+    const years = Math.floor(monthsTotal / 12);
+    if (years === 1) return 'سنة واحدة';
+    if (years === 2) return 'سنتان';
+    return `${years} سنوات`;
   }
 
   /**
@@ -581,6 +616,13 @@ export class MessageEngine {
    */
   sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  truncateText(text, maxLength = 160) {
+    if (!text) return '';
+    const collapsed = text.replace(/\s+/g, ' ').trim();
+    if (collapsed.length <= maxLength) return collapsed;
+    return `${collapsed.slice(0, maxLength - 3)}...`;
   }
 
   /**

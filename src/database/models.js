@@ -261,6 +261,24 @@ export class InteractionModel {
       WHERE guardian_id = ?
     `).get(guardianId);
   }
+
+  static getRecentNotificationDigest(familyId, limit = 30) {
+    const db = getDatabase();
+    const rows = db.prepare(
+      `SELECT id, message_type, message_content, created_at
+       FROM interactions
+       WHERE family_id = ?
+       ORDER BY created_at DESC
+       LIMIT ?`
+    ).all(familyId, limit);
+
+    return rows.map((row) => ({
+      id: row.id,
+      message_type: row.message_type || 'general',
+      created_at: row.created_at,
+      message_content: row.message_content || ''
+    }));
+  }
 }
 
 /**
