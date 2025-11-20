@@ -272,6 +272,21 @@ export function getMilestoneHighlights(ageInMonths) {
   return entry?.monthlyHighlights || '- نمو مستمر في المهارات الحركية واللغوية.';
 }
 
+export function getWeeklyTargets(ageInMonths) {
+  const entry = findClosestEntry(ageInMonths) || {};
+
+  return {
+    stageName: entry.stageName || 'مرحلة نمو مستمرة',
+    weeklyFocus:
+      entry.weeklyFocus || 'تابعوا الإشارات الصغيرة واستجيبوا لها بهدوء كل يوم.',
+    checklist: entry.checklist || [],
+    lookAhead: entry.lookAhead || 'خطوات جديدة قادمة خلال الأسابيع المقبلة.',
+    encouragement:
+      entry.encouragement ||
+      'كل محاولة صغيرة الآن تفتح الباب لمهارة أكبر لاحقاً، استمروا في التشجيع اللطيف.'
+  };
+}
+
 export function getMilestoneContext(ageInMonths) {
   const entry = findClosestEntry(ageInMonths) || {};
   return {
