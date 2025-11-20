@@ -9,7 +9,8 @@ import {
   GuardianModel,
   ChildModel,
   ParentResourceLogModel,
-  CoupleFeedbackModel
+  CoupleFeedbackModel,
+  InteractionModel
 } from '../database/models.js';
 import { LLMService } from '../ai/llm.js';
 
@@ -87,11 +88,15 @@ export class ParentResourceService {
   async sendBookRecommendation(family, child, booksConfig, gapTarget) {
     const topics = (booksConfig.topics || []).join(', ');
 
+    const notificationStats = InteractionModel.getFamilyNotificationStats(family.id, 'parent_book', 120);
+    const childDay = this.calculateDayOfLife(child.birth_date);
+
     const context = {
       messageType: 'parent_book',
       guardianName: family.family_name,
       childName: child.name,
       childAge: this.calculateAge(child.birth_date),
+      childDay,
       timeOfDay: 'الصباح',
       additionalContext: topics ? `ركّز على مواضيع: ${topics}` : '',
       trackMetadata: {
@@ -101,6 +106,7 @@ export class ParentResourceService {
         focus: 'كتاب واحد عميق يساعد الأسرة في الأسبوعين القادمين'
       },
       relationshipInsights: this.getRelationshipInsights(family.id),
+      notificationStats,
       familyId: family.id
     };
 
@@ -125,11 +131,15 @@ export class ParentResourceService {
     const topicLine = [...(roleTopics || []), ...sharedTopics].join(', ');
 
     const roleLabel = guardian.role === 'father' ? 'الأب' : guardian.role === 'mother' ? 'الأم' : 'الوالد';
+    const notificationStats = InteractionModel.getFamilyNotificationStats(family.id, 'parent_course', 90);
+    const childDay = this.calculateDayOfLife(child.birth_date);
+
     const context = {
       messageType: 'parent_course',
       guardianName: guardian.name,
       childName: child.name,
       childAge: this.calculateAge(child.birth_date),
+      childDay,
       timeOfDay: 'المساء',
       additionalContext: topicLine
         ? `الدور: ${roleLabel} | المواضيع المفضلة: ${topicLine}`
@@ -141,6 +151,7 @@ export class ParentResourceService {
         focus: 'درس مصغر لا يتجاوز 60 دقيقة للأب أو الأم'
       },
       relationshipInsights: this.getRelationshipInsights(family.id),
+      notificationStats,
       familyId: family.id
     };
 
@@ -195,6 +206,16 @@ export class ParentResourceService {
     if (months < 12) return `${months} شهر`;
     const years = Math.floor(months / 12);
     return years <= 1 ? 'سنة' : `${years} سنوات`;
+  }
+
+  calculateDayOfLife(birthDate) {
+    if (!birthDate) return null;
+    try {
+      const days = differenceInCalendarDays(new Date(), new Date(birthDate));
+      return days + 1;
+    } catch (error) {
+      return null;
+    }
   }
 
   extractTitle(message = '') {

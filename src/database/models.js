@@ -165,6 +165,57 @@ export class InteractionModel {
     `).all(familyId, limit);
   }
 
+  static getFamilyNotificationStats(familyId, messageType = null, windowDays = 30) {
+    const db = getDatabase();
+    const rows = db
+      .prepare(
+        `SELECT message_type, created_at FROM interactions
+         WHERE family_id = ?
+         ORDER BY created_at DESC
+         LIMIT 600`
+      )
+      .all(familyId);
+
+    const now = Date.now();
+    const windowMs = windowDays * 24 * 60 * 60 * 1000;
+
+    const typeCounts = {};
+    let recentCount = 0;
+
+    rows.forEach((row) => {
+      const createdAt = row.created_at ? new Date(row.created_at).getTime() : null;
+
+      if (!typeCounts[row.message_type]) {
+        typeCounts[row.message_type] = {
+          count: 0,
+          lastSentAt: row.created_at || null,
+          recent: 0
+        };
+      }
+
+      typeCounts[row.message_type].count += 1;
+
+      if (createdAt && now - createdAt <= windowMs) {
+        typeCounts[row.message_type].recent += 1;
+        recentCount += 1;
+      }
+    });
+
+    const lastSentAt = rows[0]?.created_at || null;
+    const nextSequenceForType = messageType
+      ? (typeCounts[messageType]?.count || 0) + 1
+      : null;
+
+    return {
+      totalSent: rows.length,
+      lastSentAt,
+      recentWindowDays: windowDays,
+      recentCount,
+      typeCounts,
+      nextSequenceForType
+    };
+  }
+
   static getStats(guardianId) {
     const db = getDatabase();
     return db.prepare(`

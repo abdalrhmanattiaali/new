@@ -8,7 +8,8 @@ import {
   GuardianModel,
   ChildModel,
   WeekendPlanModel,
-  CoupleFeedbackModel
+  CoupleFeedbackModel,
+  InteractionModel
 } from '../database/models.js';
 import { LLMService } from '../ai/llm.js';
 import { format, startOfWeek } from 'date-fns';
@@ -154,6 +155,9 @@ export class WeekendPlannerService {
       timeOfDay: 'المساء',
       additionalContext: `التقييم: ${config.age_rating_max || 'PG'}, اللغة: ${config.language_pref || 'ar_en_dubbed'}`,
       relationshipInsights: this.getRelationshipInsights(family?.id),
+      notificationStats: family?.id
+        ? InteractionModel.getFamilyNotificationStats(family.id, 'weekend_movies', 60)
+        : null,
       familyId: family?.id
     };
 
@@ -183,6 +187,9 @@ export class WeekendPlannerService {
       timeOfDay: 'النهار',
       additionalContext: `الميزانية: ${config.budget || 'متوسطة'}, المدة: ${config.duration_hours || 2} ساعات`,
       relationshipInsights: this.getRelationshipInsights(family?.id),
+      notificationStats: family?.id
+        ? InteractionModel.getFamilyNotificationStats(family.id, 'weekend_outings', 60)
+        : null,
       familyId: family?.id
     };
 

@@ -11,7 +11,8 @@ import {
   GuardianModel,
   ChildModel,
   ChildAudioStoryModel,
-  CoupleFeedbackModel
+  CoupleFeedbackModel,
+  InteractionModel
 } from '../database/models.js';
 import { getDatabase } from '../database/init.js';
 import { LLMService } from '../ai/llm.js';
@@ -127,8 +128,10 @@ export class AudioStoryService {
   async generateStoryForChild(family, child, guardians, previousStories = []) {
     const childAgeMonths = this.calculateAgeInMonths(child.birth_date);
     const childAgeLabel = this.formatAge(childAgeMonths);
+    const childDay = this.calculateDayOfLife(child.birth_date);
     const guardianName = guardians?.[0]?.name || family.family_name || 'الأسرة';
     const activeIssues = this.getActiveChildIssues(child.id);
+    const notificationStats = InteractionModel.getFamilyNotificationStats(family.id, 'audio_story', 60);
 
     const previousInteractions = previousStories.map((story) => ({
       message_type: 'audio_story',
@@ -177,6 +180,8 @@ export class AudioStoryService {
       additionalContext,
       previousInteractions,
       activeIssues,
+      notificationStats,
+      childDay,
       preferredFormat: 'audio_story',
       configFormats: this.config.tracks?.formats || [],
       relationshipInsights,
@@ -373,6 +378,16 @@ export class AudioStoryService {
     if (!birthDate) return null;
     try {
       return differenceInMonths(new Date(), new Date(birthDate));
+    } catch (error) {
+      return null;
+    }
+  }
+
+  calculateDayOfLife(birthDate) {
+    if (!birthDate) return null;
+    try {
+      const diff = differenceInCalendarDays(new Date(), new Date(birthDate));
+      return diff + 1;
     } catch (error) {
       return null;
     }

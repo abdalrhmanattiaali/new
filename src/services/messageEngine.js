@@ -210,6 +210,7 @@ export class MessageEngine {
   async buildLLMContext({ guardian, family, child, messageType, timeOfDay, additionalContext }) {
     const memoryLimit = this.config.ai?.memory?.max_messages || 50;
     const childAge = this.calculateAge(child.birth_date);
+    const childDay = this.calculateDayOfLife(child.birth_date);
 
     let previousInteractions = [];
     if (guardian) {
@@ -217,6 +218,10 @@ export class MessageEngine {
     } else if (family) {
       previousInteractions = InteractionModel.getByFamily(family.id, memoryLimit);
     }
+
+    const notificationStats = family
+      ? InteractionModel.getFamilyNotificationStats(family.id, messageType, 45)
+      : null;
 
     const activeIssues = this.getActiveIssuesForFamily(family?.id);
     const relationshipInsights = this.getRelationshipInsightsForFamily(family?.id);
@@ -236,6 +241,7 @@ export class MessageEngine {
       guardianName: guardian ? guardian.name : family?.family_name,
       childName: child.name,
       childAge,
+      childDay,
       timeOfDay,
       additionalContext,
       previousInteractions,
@@ -245,6 +251,7 @@ export class MessageEngine {
       configFormats: this.config.tracks?.formats || [],
       knowledgeHints,
       relationshipInsights,
+      notificationStats,
       familyId: family?.id
     };
   }
@@ -500,6 +507,18 @@ export class MessageEngine {
     } else {
       return `${years} سنوات`;
     }
+  }
+
+  /**
+   * Calculate child's day of life (starts at day 1)
+   */
+  calculateDayOfLife(birthDate) {
+    if (!birthDate) return null;
+    const birth = new Date(birthDate);
+    if (Number.isNaN(birth.getTime())) return null;
+    const now = new Date();
+    const diffDays = Math.floor((now.getTime() - birth.getTime()) / (1000 * 60 * 60 * 24));
+    return diffDays + 1;
   }
 
   /**

@@ -172,7 +172,9 @@ export class LLMService {
       preferredFormat,
       configFormats = [],
       knowledgeHints = [],
-      relationshipInsights = []
+      relationshipInsights = [],
+      notificationStats = {},
+      childDay = null
     } = context;
 
     const prompts = {
@@ -357,9 +359,14 @@ ${additionalContext ? `سياق إضافي: ${additionalContext}\n` : ''}
     const issuesBlock = this.formatActiveIssues(activeIssues);
     const knowledgeBlock = this.formatKnowledge(knowledgeSnippets);
     const relationshipBlock = this.formatRelationshipInsights(relationshipInsights);
+    const notificationBlock = this.formatNotificationStats(notificationStats, messageType);
 
     const knowledgeHintLine = knowledgeHints?.length
       ? `كلمات مفتاحية إضافية: ${knowledgeHints.join(', ')}`
+      : '';
+
+    const childDayLine = Number.isInteger(childDay)
+      ? `- اليوم ${childDay} من عمر ${childName} (استخدم العدّ اليومي لبناء الإحساس بالتقدم)`
       : '';
 
     return `
@@ -370,6 +377,7 @@ ${additionalContext ? `سياق إضافي: ${additionalContext}\n` : ''}
 - توقيت الرسالة: ${timeOfDay}
 ${trackInfoLines.length ? `- ${trackInfoLines.join('\n- ')}` : ''}
 ${knowledgeHintLine ? `- ${knowledgeHintLine}` : ''}
+${childDayLine}
 
 ${formatInstruction ? `تعليمات شكل الإخراج:\n${formatInstruction}\n` : ''}
 
@@ -378,6 +386,8 @@ ${issuesBlock ? `التحديات أو المتابعة الحالية:\n${issue
 ${knowledgeBlock ? `معرفة داعمة مختارة:\n${knowledgeBlock}\n` : ''}
 
 ${relationshipBlock ? `مقتطفات عن العلاقة الزوجية:\n${relationshipBlock}\n` : ''}
+
+${notificationBlock ? `ملخص الإشعارات السابقة:\n${notificationBlock}\n` : ''}
 
 ذاكرة المحادثة الأخيرة (${previousInteractions?.length || 0}):
 ${memoryBlock}
@@ -604,6 +614,37 @@ ${historyLines || 'لا يوجد'}
         return `- ${sentimentIcon} ${parts.join(' | ')}`;
       })
       .join('\n');
+  }
+
+  formatNotificationStats(stats = {}, messageType) {
+    if (!stats || typeof stats !== 'object') {
+      return '';
+    }
+
+    const lines = [];
+
+    if (typeof stats.totalSent === 'number') {
+      lines.push(`- إجمالي الرسائل المرسلة للعائلة: ${stats.totalSent}`);
+    }
+
+    if (typeof stats.recentCount === 'number' && stats.recentWindowDays) {
+      lines.push(`- آخر ${stats.recentWindowDays} يوماً: ${stats.recentCount} رسالة`);
+    }
+
+    if (messageType && stats.typeCounts?.[messageType]) {
+      const typeInfo = stats.typeCounts[messageType];
+      lines.push(`- لهذا المسار (${messageType}): ${typeInfo.count} رسالة سابقة`);
+      if (typeInfo.lastSentAt) {
+        const formatted = new Date(typeInfo.lastSentAt).toLocaleDateString('ar-EG', { weekday: 'short', day: 'numeric', month: 'short' });
+        lines.push(`- آخر إرسال لهذا المسار: ${formatted}`);
+      }
+    }
+
+    if (stats.nextSequenceForType && messageType) {
+      lines.push(`- هذه الرسالة يجب أن تُبنى كنقطة #${stats.nextSequenceForType} في السلسلة لتجنب التكرار.`);
+    }
+
+    return lines.join('\n');
   }
 
   safeTruncate(text, maxLength) {
