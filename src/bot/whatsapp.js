@@ -4,9 +4,10 @@
  */
 
 import pkg from 'whatsapp-web.js';
-const { Client, LocalAuth } = pkg;
+const { Client, LocalAuth, MessageMedia, Buttons } = pkg;
 import qrcode from 'qrcode-terminal';
 import { EventEmitter } from 'events';
+import { describeRegistrySource, isGroupAllowed } from '../utils/groupRegistry.js';
 
 export class WhatsAppBot extends EventEmitter {
   constructor() {
@@ -14,6 +15,31 @@ export class WhatsAppBot extends EventEmitter {
     this.client = null;
     this.isReady = false;
     this.messageHandlers = new Map();
+  }
+
+  normalizeChatId(target) {
+    if (!target) return null;
+    return target.includes('@') ? target : `${target}@c.us`;
+  }
+
+  ensureGroupTarget(chatId, contextLabel = 'sendMessage') {
+    if (!chatId) {
+      console.warn(`⚠️ ${contextLabel}: لا يوجد معرف لإرسال الرسالة.`);
+      return false;
+    }
+
+    if (!chatId.endsWith('@g.us')) {
+      console.warn(`⚠️ ${contextLabel}: تم منع الإرسال إلى ${chatId}. يسمح النظام بالرسائل داخل الجروبات فقط.`);
+      return false;
+    }
+
+    if (!isGroupAllowed(chatId)) {
+      const registry = describeRegistrySource();
+      console.warn(`⚠️ ${contextLabel}: الجروب ${chatId} غير موجود في قائمة السماح. حدث الملف ${registry.path} أولاً.`);
+      return false;
+    }
+
+    return true;
   }
 
   /**
@@ -146,8 +172,11 @@ export class WhatsAppBot extends EventEmitter {
     }
 
     try {
-      // Format phone number to WhatsApp format (e.g., 201234567890@c.us)
-      const chatId = to.includes('@') ? to : `${to}@c.us`;
+      const chatId = this.normalizeChatId(to);
+
+      if (!this.ensureGroupTarget(chatId, 'sendMessage')) {
+        return false;
+      }
       await this.client.sendMessage(chatId, text);
       console.log(`✅ Message sent to ${to}`);
       return true;
@@ -159,6 +188,9 @@ export class WhatsAppBot extends EventEmitter {
 
   /**
    * Send a message with buttons (using list message)
+   * NOTE: WhatsApp Business accounts may block interactive payloads. In that case
+   * we gracefully fall back to plain text with enumerated options instead of
+   * throwing and losing the message.
    */
   async sendMessageWithButtons(to, text, buttons) {
     if (!this.isReady) {
@@ -171,19 +203,88 @@ export class WhatsAppBot extends EventEmitter {
     }
 
     try {
-      const chatId = to.includes('@') ? to : `${to}@c.us`;
+      const chatId = this.normalizeChatId(to);
 
-      // Create a formatted message with buttons as text options
-      let formattedMessage = text + '\n\n';
-      buttons.forEach((button, index) => {
-        formattedMessage += `${index + 1}. ${button}\n`;
-      });
+      if (!this.ensureGroupTarget(chatId, 'sendMessageWithButtons')) {
+        return false;
+      }
 
-      await this.client.sendMessage(chatId, formattedMessage);
-      console.log(`✅ Message with buttons sent to ${to}`);
-      return true;
+      const normalizedButtons = (buttons || [])
+        .map((button) => (typeof button === 'string' ? button.trim() : ''))
+        .filter(Boolean);
+
+      // If no interactive options, send plain text.
+      if (!normalizedButtons.length) {
+        await this.client.sendMessage(chatId, text);
+        console.log(`✅ Message sent to ${to} without interactive buttons`);
+        return true;
+      }
+
+      // If there are too many buttons (lists can be blocked), fall back to text with numbered options.
+      if (normalizedButtons.length > 3) {
+        const fallback = `${text}\n\n${normalizedButtons
+          .map((label, idx) => `${idx + 1}. ${label}`)
+          .join('\n')}`;
+        await this.client.sendMessage(chatId, fallback);
+        console.log(`✅ Message sent to ${to} with text-based options (list fallback)`);
+        return true;
+      }
+
+      // Try sending regular Buttons for up to 3 options; if WhatsApp rejects, fall back to text.
+      try {
+        const buttonInstances = normalizedButtons.map((label) => ({ body: label }));
+        const buttonMessage = new Buttons(text, buttonInstances, '', 'اختر الإجراء المناسب');
+        await this.client.sendMessage(chatId, buttonMessage);
+        console.log(`✅ Message with buttons sent to ${to}`);
+        return true;
+      } catch (interactiveError) {
+        console.warn(
+          `⚠️ sendMessageWithButtons interactive payload rejected for ${to}: ${interactiveError?.message || interactiveError}`
+        );
+        const fallback = `${text}\n\n${normalizedButtons
+          .map((label, idx) => `${idx + 1}. ${label}`)
+          .join('\n')}`;
+        await this.client.sendMessage(chatId, fallback);
+        console.log(`✅ Message sent to ${to} with text-based options after fallback`);
+        return true;
+      }
     } catch (error) {
       console.error(`❌ Error sending message with buttons to ${to}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send an audio message or voice note
+   */
+  async sendAudioMessage(to, audioBuffer, filename = 'audio.mp3', caption = '', options = {}) {
+    if (!this.isReady) {
+      throw new Error('WhatsApp client is not ready');
+    }
+
+    if (!to || !audioBuffer) {
+      console.warn('⚠️ sendAudioMessage called with invalid parameters. Skipping...');
+      return false;
+    }
+
+    try {
+      const chatId = this.normalizeChatId(to);
+
+      if (!this.ensureGroupTarget(chatId, 'sendAudioMessage')) {
+        return false;
+      }
+      const media = new MessageMedia('audio/mpeg', Buffer.from(audioBuffer).toString('base64'), filename);
+
+      const payload = { ...options };
+      if (caption) {
+        payload.caption = caption;
+      }
+
+      await this.client.sendMessage(chatId, media, payload);
+      console.log(`✅ Audio message sent to ${to}`);
+      return true;
+    } catch (error) {
+      console.error(`❌ Error sending audio message to ${to}:`, error);
       throw error;
     }
   }
@@ -276,6 +377,9 @@ export class WhatsAppBot extends EventEmitter {
     }
 
     try {
+      if (!this.ensureGroupTarget(groupId, 'sendMessageToGroup')) {
+        return false;
+      }
       await this.client.sendMessage(groupId, text);
       console.log(`✅ Message sent to group ${groupId}`);
       return true;

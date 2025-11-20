@@ -34,8 +34,8 @@ export class DailyWeatherService {
   /**
    * Send daily weather updates to all families
    */
-  async sendDailyWeatherUpdates() {
-    console.log('🌤️ Sending daily weather updates...');
+  async sendDailyWeatherUpdates(timeOfDay = 'morning') {
+    console.log(`🌤️ Sending ${timeOfDay} daily weather updates...`);
 
     try {
       // Get weather data
@@ -56,7 +56,7 @@ export class DailyWeatherService {
       db.close();
 
       // Generate weather message with AI
-      const message = await this.generateWeatherMessage(weatherData);
+      const message = await this.generateWeatherMessage(weatherData, timeOfDay);
 
       // Send to all families
       for (const family of families) {
@@ -65,7 +65,7 @@ export class DailyWeatherService {
           family.send_to_group,
           message
         );
-        console.log(`✅ Sent weather update to ${family.family_name}`);
+        console.log(`✅ Sent ${timeOfDay} weather update to ${family.family_name}`);
       }
 
       console.log('✅ Daily weather updates sent');
@@ -222,13 +222,13 @@ export class DailyWeatherService {
   /**
    * Generate weather message with AI-powered advice
    */
-  async generateWeatherMessage(weather) {
-    const timeOfDay = this.getTimeOfDay();
+  async generateWeatherMessage(weather, timeOfDay = 'morning') {
+    const timeLabel = timeOfDay === 'evening' ? 'مساءً' : this.getTimeOfDay();
 
     const systemPrompt = `أنت خبير طقس متخصص في تقديم نصائح عملية للعائلات المصرية بناءً على حالة الطقس.
 تقدم نصائح صحية وعملية بلغة دافئة ومفيدة.`;
 
-    const userPrompt = `اكتب تذكير يومي بحالة الطقس اليوم في مدينة السلام، القاهرة مع نصائح عملية.
+    const userPrompt = `اكتب تذكير ${timeOfDay === 'evening' ? 'مسائي' : 'صباحي'} بحالة الطقس اليوم في مدينة السلام، القاهرة مع نصائح عملية.
 
 **بيانات الطقس الحالية:**
 🌡️ درجة الحرارة: ${weather.temperature}°م (تبدو كـ ${weather.feelsLike}°م)
@@ -245,9 +245,9 @@ ${weather.rain > 0 ? `💧 كمية المطر: ${weather.rain} مم` : ''}
 📝 الوصف: ${weather.description}
 
 **المطلوب:**
-1. عنوان جذاب (🌤️ حالة الطقس اليوم - ${timeOfDay})
+1. عنوان جذاب (🌤️ حالة الطقس اليوم - ${timeLabel})
 2. ملخص سريع لحالة الطقس (سطرين)
-3. **نصائح عملية ذكية** حسب الحالة:
+3. **نصائح عملية ذكية** حسب الحالة وتوقيت اليوم:
 
    **للحرارة:**
    - إذا > 35°: تحذير من الحر، تجنب الخروج وقت الذروة، شرب ماء كثير
@@ -275,8 +275,9 @@ ${weather.rain > 0 ? `💧 كمية المطر: ${weather.rain} مم` : ''}
    - أفضل وقت للتهوية (حسب الحرارة والرطوبة)
    - كم دقيقة مناسبة
 
-4. **نصائح للأطفال الصغار** (ملابس، حماية، أنشطة)
-5. دعوة للاستمتاع باليوم بأمان
+4. **نصائح للأطفال الصغار** (ملابس، حماية، أنشطة) مع فرق بين صباح ومسـاء، وإشارة لاحتياج الخروج أو النوم.
+5. إذا كان التوقيت مسائياً: فقرة تجهيز ملابس الغد أو خطوات خروج آمن بعد المغرب. إذا كان صباحياً: اقتراح نشاط خارجي قصير أو تحذير سريع.
+6. دعوة للاستمتاع باليوم بأمان
 
 **المواصفات:**
 - الطول: 220-280 كلمة
@@ -298,7 +299,7 @@ ${weather.rain > 0 ? `💧 كمية المطر: ${weather.rain} مم` : ''}
     } catch (error) {
       console.error('Error generating weather message:', error);
       // Fallback message
-      return this.generateFallbackWeatherMessage(weather);
+      return this.generateFallbackWeatherMessage(weather, timeLabel);
     }
   }
 
@@ -327,9 +328,9 @@ ${weather.rain > 0 ? `💧 كمية المطر: ${weather.rain} مم` : ''}
   /**
    * Generate fallback weather message
    */
-  generateFallbackWeatherMessage(weather) {
+  generateFallbackWeatherMessage(weather, timeLabel = 'اليوم') {
     return `
-🌤️ *حالة الطقس اليوم - مدينة السلام، القاهرة*
+🌤️ *حالة الطقس ${timeLabel} - مدينة السلام، القاهرة*
 
 🌡️ **درجة الحرارة**: ${weather.temperature}°م (${weather.tempMin}° - ${weather.tempMax}°)
 💧 **الرطوبة**: ${weather.humidity}%

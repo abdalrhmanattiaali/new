@@ -11,6 +11,11 @@ global.OPENAI_API_KEY = 'sk-PLACEHOLDER-REPLACE-WITH-YOUR-REAL-OPENAI-KEY';
 // احصل على API Key من: https://platform.openai.com/api-keys
 // ============================================
 
+// ⚠️ ElevenLabs TTS API Key (يمكن استبداله عبر متغير البيئة ELEVENLABS_API_KEY)
+global.ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || 'sk_7e36699784852bb2546986c2e70d006a29ff7ac3023e8689';
+// احصل على المفتاح من: https://elevenlabs.io
+// ============================================
+
 import { WhatsAppBot } from './bot/whatsapp.js';
 import { MessageHandler } from './handlers/messageHandler.js';
 import { Scheduler } from './schedulers/scheduler.js';
