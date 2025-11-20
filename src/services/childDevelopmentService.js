@@ -20,6 +20,9 @@ export class ChildDevelopmentService {
     this.config = config;
     this.dbPath = join(__dirname, '..', '..', 'data', 'family_assistant.db');
     this.claude = new OpenAIClient();
+    this.allowedVideoDomains =
+      this.config?.parent_resources?.videos?.allowed_domains || ['youtube.com', 'youtu.be', 'facebook.com', 'fb.watch'];
+    this.videoFallbackLinks = this.config?.parent_resources?.videos?.fallback_links || [];
   }
 
   /**
@@ -133,6 +136,9 @@ ${stageInfo.context}
 4. آية أو حديث قصير متعلق بالطمأنينة أو الشكر (${stageInfo.spiritualAnchor} / ${stageInfo.propheticWisdom}).
 5. اقتباس ملهم متغير (${stageInfo.inspirationalQuote}) + سؤال متابعة لتسجيل ملاحظة جديدة في السجل.
 6. تذكير بعلامة خطر واحدة فقط من القائمة أعلاه إذا ظهرت أثناء التمرين.
+7. اختم بمورد موثوق (رابط YouTube/Facebook مسموح أو كتاب سريع) مرتبط بالنشاط، بشرط ألا يتكرر من آخر الروابط: ${
+      timelineContext.resourceHistory || 'لا توجد روابط حديثة'
+    }. إذا لم يتوفر رابط مناسب، قدم عنوان كتاب ودار نشر.
 
 **المواصفات:**
 - الطول: 200-260 كلمة
@@ -149,7 +155,7 @@ ${stageInfo.context}
         maxTokens: 20000
       });
 
-      return message;
+      return this.ensureResourceLink(message);
 
     } catch (error) {
       console.error('Error generating activity message:', error);
@@ -191,6 +197,9 @@ ${stageInfo.nutritionContext}
 4. اقتباس إيماني أو حديث (${stageInfo.propheticWisdom}) + آية موجزة (${stageInfo.spiritualAnchor}) تدعم الطمأنينة.
 5. اقتباس ملهم متغير (${stageInfo.inspirationalQuote}) وتذكير بتسجيل ملاحظة في السجل بعد الوجبة.
 6. بديل إذا رفض الطفل الطعام + جملة تشجيعية قصيرة للأم/الأب.
+7. مورد داعم واحد فقط في النهاية (فيديو موثوق من ${this.allowedVideoDomains.join(', ')} أو كتاب صغير عن التغذية) ولا تكرر الروابط التالية: ${
+      timelineContext.resourceHistory || 'لا توجد روابط حديثة'
+    }.
 
 **المواصفات:**
 - الطول: 180-230 كلمة
@@ -206,7 +215,7 @@ ${stageInfo.nutritionContext}
         maxTokens: 20000
       });
 
-      return message;
+      return this.ensureResourceLink(message);
 
     } catch (error) {
       console.error('Error generating nutrition message:', error);
@@ -218,6 +227,7 @@ ${stageInfo.nutritionContext}
   buildContext(db, familyId, child) {
     let interactions = [];
     let issues = [];
+    let resourceHistory = [];
 
     try {
       interactions = db
@@ -231,6 +241,12 @@ ${stageInfo.nutritionContext}
         .all(familyId);
     } catch (error) {
       console.warn('ChildDevelopmentService: failed to load interactions', error.message);
+    }
+
+    try {
+      resourceHistory = this.getResourceHistory(db, familyId);
+    } catch (error) {
+      console.warn('ChildDevelopmentService: failed to map resource history', error.message);
     }
 
     try {
@@ -250,6 +266,7 @@ ${stageInfo.nutritionContext}
     return {
       interactions,
       issues,
+      resourceHistory,
       milestone: getMilestoneContext(this.calculateAgeInMonths(child.birth_date))
     };
   }
@@ -268,12 +285,74 @@ ${stageInfo.nutritionContext}
       )
       .join('\n');
 
+    const resourceHistory = (context.resourceHistory || [])
+      .slice(0, 6)
+      .map((item) => `• ${item}`)
+      .join(' | ');
+
     return {
       history,
       issues,
       familyName,
+      resourceHistory,
       milestone: context.milestone || {}
     };
+  }
+
+  getResourceHistory(db, familyId) {
+    try {
+      const rows = db
+        .prepare(
+          `SELECT message_type, message_content
+           FROM interactions
+           WHERE family_id = ? AND message_type IN ('parent_video', 'parent_book', 'parent_course')
+           ORDER BY created_at DESC
+           LIMIT 8`
+        )
+        .all(familyId);
+
+      return rows.map((row) => `${row.message_type}: ${row.message_content?.slice(0, 120) || ''}`);
+    } catch (error) {
+      console.warn('ChildDevelopmentService: failed to load resource history', error.message);
+      return [];
+    }
+  }
+
+  ensureResourceLink(message) {
+    const link = this.extractAllowedLink(message);
+
+    if (link) return message;
+
+    const fallback = this.chooseFallbackLink();
+    if (fallback) {
+      return `${message}\n\n🔗 رابط موثوق: ${fallback}`;
+    }
+
+    return message;
+  }
+
+  extractAllowedLink(message) {
+    const urlRegex = /(https?:\/\/[\w.-]+(?:\/[\w\-._~:/?#[\]@!$&'()*+,;=%]*)?)/gi;
+    const matches = message.match(urlRegex) || [];
+
+    for (const url of matches) {
+      try {
+        const normalized = new URL(url);
+        if (this.allowedVideoDomains.some((domain) => normalized.hostname.includes(domain))) {
+          return normalized.toString();
+        }
+      } catch (err) {
+        // ignore invalid URL
+      }
+    }
+
+    return null;
+  }
+
+  chooseFallbackLink() {
+    if (!this.videoFallbackLinks.length) return null;
+    const index = Math.floor(Math.random() * this.videoFallbackLinks.length);
+    return this.videoFallbackLinks[index];
   }
 
   /**
