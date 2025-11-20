@@ -240,6 +240,17 @@ notifications:
       - id: friday_2230_week_reflection
         time: "22:30"
 
+  types:
+    reminders: true
+    daily_messages: true
+    weekly_reports: true
+    urgent_only: false
+
+  smart_timing:
+    enabled: true
+    learn_from_interactions: true
+    avoid_busy_times: true
+
 # القصص الصوتية اليومية قبل النوم
 audio_stories:
   enabled: true
@@ -665,21 +676,6 @@ reports:
     enabled: false
     send_day: 1
     send_time: "10:00"
-
-# الإشعارات
-notifications:
-  # أنواع الإشعارات
-  types:
-    reminders: true
-    daily_messages: true
-    weekly_reports: true
-    urgent_only: false
-
-  # توقيت الإشعارات
-  smart_timing:
-    enabled: true
-    learn_from_interactions: true
-    avoid_busy_times: true
 
 # الأخطاء والسجلات
 logging:
