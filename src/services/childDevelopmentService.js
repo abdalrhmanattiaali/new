@@ -9,6 +9,7 @@ import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { OpenAIClient } from '../utils/openaiClient.js';
+import { getMilestoneContext } from '../utils/milestoneLibrary.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -50,11 +51,14 @@ export class ChildDevelopmentService {
           // Calculate age in months
           const ageInMonths = this.calculateAgeInMonths(child.birth_date);
 
+          const context = this.buildContext(db, family.id, child);
+
           // Generate development message
           const message = await this.generateDevelopmentMessage(
-            child.name,
+            child,
             ageInMonths,
-            family.family_name
+            family.family_name,
+            context
           );
 
           // Send message
@@ -80,28 +84,29 @@ export class ChildDevelopmentService {
   /**
    * Generate daily development message based on child's age
    */
-  async generateDevelopmentMessage(childName, ageInMonths, familyName) {
-    // Get development stage info
-    const stageInfo = this.getDevelopmentStageInfo(ageInMonths);
+  async generateDevelopmentMessage(child, ageInMonths, familyName, context = {}) {
+    const milestoneContext = context.milestone || getMilestoneContext(ageInMonths);
+    const stageInfo = { ...this.getDevelopmentStageInfo(ageInMonths), ...milestoneContext };
+    const timeline = this.prepareTimelineContext(context, familyName);
 
     // Determine message type for today (rotate between activity and nutrition)
     const dayOfMonth = new Date().getDate();
     const messageType = dayOfMonth % 2 === 0 ? 'activity' : 'nutrition';
 
     if (messageType === 'activity') {
-      return await this.generateActivityMessage(childName, ageInMonths, stageInfo);
+      return await this.generateActivityMessage(child.name, ageInMonths, stageInfo, timeline);
     } else {
-      return await this.generateNutritionMessage(childName, ageInMonths, stageInfo);
+      return await this.generateNutritionMessage(child.name, ageInMonths, stageInfo, timeline);
     }
   }
 
   /**
    * Generate activity and exercise message
    */
-  async generateActivityMessage(childName, ageInMonths, stageInfo) {
+  async generateActivityMessage(childName, ageInMonths, stageInfo, timelineContext = {}) {
     const systemPrompt = `أنت خبير تطوير الأطفال متخصص في الأنشطة والتمارين المناسبة لكل مرحلة عمرية.
 لديك معرفة واسعة بالتطور الحركي والمعرفي للأطفال من الولادة حتى سنتين.
-تقدم نصائح عملية ومخصصة بالعربية الفصحى الدافئة.`;
+تقدم نصائح عملية ومخصصة بالعربية الفصحى الدافئة، وتربط الرسائل بسجل العائلة والمشكلات أو الملاحظات الحديثة.`;
 
     const userPrompt = `اكتب رسالة يومية للوالدين عن نشاط وتمارين مناسبة لطفلهم ${childName}.
 
@@ -109,27 +114,34 @@ export class ChildDevelopmentService {
 - الاسم: ${childName}
 - العمر: ${ageInMonths} شهر
 - المرحلة: ${stageInfo.stageName}
+- أعمدة النمو: ${stageInfo.growthPillars?.join(', ')}
+- علامات خطر يجب مراقبتها: ${stageInfo.riskSigns?.join('; ')}
+
+**سجل العائلة الحديث:**
+${timelineContext.history || '- لا توجد تفاعلات مسجلة مؤخراً.'}
+
+**القضايا النشطة للطفل:**
+${timelineContext.issues || '- لا توجد قضايا نشطة.'}
 
 **السياق التطوري:**
 ${stageInfo.context}
 
 **المطلوب:**
-1. نشاط أو تمرين واحد مفصل ليوم اليوم
-2. شرح كيفية القيام به (خطوات واضحة)
-3. المدة المناسبة (5-15 دقيقة حسب العمر)
-4. الفوائد التطورية
-5. نصائح للأمان
-6. كلمات تشجيعية للوالدين
+1. نشاط أو تمرين واحد مفصل لليوم (5-15 دقيقة) مرتبط بمرحلة ${stageInfo.stageName}.
+2. خطوات واضحة + نصيحة أمان محددة.
+3. فقرة قصة واقعية قصيرة (100-140 كلمة) تربط النشاط بسجل العائلة أو تقدم الطفل، بدون تكرار قوالب.
+4. آية أو حديث قصير متعلق بالطمأنينة أو الشكر (${stageInfo.spiritualAnchor} / ${stageInfo.propheticWisdom}).
+5. اقتباس ملهم متغير (${stageInfo.inspirationalQuote}) + سؤال متابعة لتسجيل ملاحظة جديدة في السجل.
+6. تذكير بعلامة خطر واحدة فقط من القائمة أعلاه إذا ظهرت أثناء التمرين.
 
 **المواصفات:**
-- الطول: 150-200 كلمة
+- الطول: 200-260 كلمة
 - ابدأ بـ: 📚 *نشاط اليوم لـ ${childName}*
-- لغة دافئة ومشجعة
-- نصائح عملية قابلة للتطبيق فوراً
-- استخدم إيموجي مناسب
-- اختر نشاطاً جديداً ومختلفاً في كل مرة
+- لغة دافئة ومشجعة، خالية من التكرار.
+- نصائح عملية قابلة للتطبيق فوراً، مع إيموجي مناسب.
+- اختم بطلب بسيط (مثل: "اكتبوا في السجل كيف استجاب ${childName} اليوم").
 
-اجعل الرسالة ممتعة ومحفزة للوالدين!`;
+اجعل الرسالة ممتعة ومحفزة وذكية!`;
 
     try {
       const message = await this.claude.generateText(systemPrompt, userPrompt, {
@@ -149,10 +161,10 @@ ${stageInfo.context}
   /**
    * Generate nutrition message
    */
-  async generateNutritionMessage(childName, ageInMonths, stageInfo) {
+  async generateNutritionMessage(childName, ageInMonths, stageInfo, timelineContext = {}) {
     const systemPrompt = `أنت خبير تغذية أطفال متخصص في التغذية السليمة من الولادة حتى السنتين.
 لديك معرفة شاملة بإدخال الأطعمة الصلبة، الرضاعة، والتغذية المتوازنة.
-تقدم نصائح عملية وآمنة بالعربية الفصحى الدافئة.`;
+تقدم نصائح عملية وآمنة بالعربية الفصحى الدافئة مع الاستناد إلى سجل العائلة والمشكلات النشطة.`;
 
     const userPrompt = `اكتب رسالة يومية للوالدين عن التغذية المناسبة لطفلهم ${childName}.
 
@@ -160,27 +172,33 @@ ${stageInfo.context}
 - الاسم: ${childName}
 - العمر: ${ageInMonths} شهر
 - المرحلة: ${stageInfo.stageName}
+- أعمدة النمو: ${stageInfo.growthPillars?.join(', ')}
+- علامات خطر يجب مراقبتها: ${stageInfo.riskSigns?.join('; ')}
+
+**سجل العائلة الحديث:**
+${timelineContext.history || '- لا توجد تفاعلات مسجلة.'}
+
+**القضايا النشطة للطفل:**
+${timelineContext.issues || '- لا توجد قضايا نشطة.'}
 
 **السياق التغذوي:**
 ${stageInfo.nutritionContext}
 
 **المطلوب:**
-1. نصيحة تغذية واحدة مفصلة ليوم اليوم
-2. وصفة بسيطة أو فكرة وجبة (إن كان مناسباً للعمر)
-3. الفوائد الصحية
-4. نصائح تحضير آمنة
-5. ما يجب تجنبه
-6. تشجيع للوالدين
+1. نصيحة غذائية عملية لليوم (كمية/نوع/توقيت) تراعي المرحلة.
+2. تحذيرات السلامة (اختناق/حساسية) مع علامة خطر واحدة من القائمة.
+3. فقرة قصة واقعية قصيرة (90-130 كلمة) حول تجربة طعام سابقة أو تقدم حديث.
+4. اقتباس إيماني أو حديث (${stageInfo.propheticWisdom}) + آية موجزة (${stageInfo.spiritualAnchor}) تدعم الطمأنينة.
+5. اقتباس ملهم متغير (${stageInfo.inspirationalQuote}) وتذكير بتسجيل ملاحظة في السجل بعد الوجبة.
+6. بديل إذا رفض الطفل الطعام + جملة تشجيعية قصيرة للأم/الأب.
 
 **المواصفات:**
-- الطول: 150-200 كلمة
+- الطول: 180-230 كلمة
 - ابدأ بـ: 🍎 *تغذية ${childName} اليوم*
-- لغة دافئة وداعمة
-- نصائح آمنة ومبنية على العمر
-- استخدم إيموجي مناسب
-- اقترح شيئاً جديداً ومتنوعاً
+- لغة دافئة وآمنة وغير مكررة
+- نصائح واقعية قابلة للتطبيق فوراً، مع إيموجي مناسب.
 
-اجعل الرسالة مفيدة وعملية!`;
+اجعل النصيحة عملية ومتجددة ومرتبطة بالسياق!`;
 
     try {
       const message = await this.claude.generateText(systemPrompt, userPrompt, {
@@ -195,6 +213,67 @@ ${stageInfo.nutritionContext}
       // Fallback message
       return `🍎 *تغذية ${childName} اليوم*\n\nتذكروا: التغذية المتوازنة والمتنوعة هي المفتاح لنمو ${childName} الصحي! استشيروا طبيب الأطفال دائماً. 💚`;
     }
+  }
+
+  buildContext(db, familyId, child) {
+    let interactions = [];
+    let issues = [];
+
+    try {
+      interactions = db
+        .prepare(
+          `SELECT message_type, message_content
+           FROM interactions
+           WHERE family_id = ?
+           ORDER BY created_at DESC
+           LIMIT 20`
+        )
+        .all(familyId);
+    } catch (error) {
+      console.warn('ChildDevelopmentService: failed to load interactions', error.message);
+    }
+
+    try {
+      issues = db
+        .prepare(
+          `SELECT issue_title, issue_type, severity, status
+           FROM child_issues
+           WHERE family_id = ? AND child_id = ? AND status IN ('active', 'monitoring')
+           ORDER BY updated_at DESC
+           LIMIT 10`
+        )
+        .all(familyId, child.id);
+    } catch (error) {
+      console.warn('ChildDevelopmentService: failed to load child issues', error.message);
+    }
+
+    return {
+      interactions,
+      issues,
+      milestone: getMilestoneContext(this.calculateAgeInMonths(child.birth_date))
+    };
+  }
+
+  prepareTimelineContext(context, familyName) {
+    const history = (context.interactions || [])
+      .slice(0, 10)
+      .map((item) => `- ${item.message_type || 'محادثة'}: ${item.message_content?.slice(0, 90) || ''}`)
+      .join('\n');
+
+    const issues = (context.issues || [])
+      .slice(0, 6)
+      .map(
+        (issue) =>
+          `- ${issue.issue_title || issue.issue_type || 'مشكلة'} (${issue.severity || 'متوسطة'}) — الحالة: ${issue.status || 'متابعة'}`
+      )
+      .join('\n');
+
+    return {
+      history,
+      issues,
+      familyName,
+      milestone: context.milestone || {}
+    };
   }
 
   /**

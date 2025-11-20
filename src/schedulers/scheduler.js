@@ -221,12 +221,17 @@ export class Scheduler {
       );
     }
 
-    // Send daily weather updates (every day at 9:00 AM)
-    this.scheduleJob(
-      '0 9 * * *',
-      'Daily Weather Updates',
-      () => this.dailyWeather.sendDailyWeatherUpdates()
-    );
+    // Send daily weather updates (configurable morning/ evening slots)
+    const weatherTimes = this.config.weather?.send_times || ['09:00'];
+    weatherTimes.forEach((time, idx) => {
+      const [wHour, wMinute] = time.split(':');
+      const label = idx === 0 ? 'Morning Weather' : `Weather ${idx + 1}`;
+      this.scheduleJob(
+        `${wMinute} ${wHour} * * *`,
+        `Daily Weather Updates (${label})`,
+        () => this.dailyWeather.sendDailyWeatherUpdates(idx === 0 ? 'morning' : 'evening')
+      );
+    });
 
     // === القصص الصوتية قبل النوم ===
     if (this.config.audio_stories?.enabled !== false) {

@@ -25,6 +25,9 @@ groups:
 weather:
   enabled: true
   provider: "openweather"  # openweather or estimation
+  send_times:
+    - "07:45"   # تنبيه صباحي مع نصائح الملابس
+    - "18:15"   # تحديث مسائي للتحضير لليوم التالي أو الخروج بعد العصر
   update_interval_minutes: 30
   include_in_messages: true
   show_for_activities:
