@@ -324,6 +324,17 @@ export class Scheduler {
           () => this.parentResources.sendVideoRecommendationsIfDue()
         );
       }
+
+      const hubConfig = this.config.parent_resources?.education_hub || {};
+      if (hubConfig.enabled !== false) {
+        const hubTime = hubConfig.check_time || '20:30';
+        const [hHour, hMinute] = hubTime.split(':');
+        this.scheduleJob(
+          `${hMinute} ${hHour} * * *`,
+          'Parent Education Hub',
+          () => this.parentResources.sendEducationHubIfDue()
+        );
+      }
     }
 
     if (this.config.couple_feedback?.enabled !== false) {

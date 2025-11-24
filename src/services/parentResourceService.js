@@ -116,6 +116,36 @@ export class ParentResourceService {
     }
   }
 
+  async sendEducationHubIfDue() {
+    if (this.config.parent_resources?.enabled === false) return;
+    const hubConfig = this.config.parent_resources?.education_hub || {};
+    if (hubConfig.enabled === false) return;
+
+    const minGap = hubConfig.min_gap_days ?? 4;
+    const maxGap = hubConfig.max_gap_days ?? 6;
+    const allowedDomains = hubConfig.allowed_domains || ['youtube.com', 'youtu.be', 'facebook.com', 'fb.watch'];
+    const families = FamilyModel.getAll();
+
+    for (const family of families) {
+      if (!family.onboarding_completed) continue;
+      const child = this.getPrimaryChild(family.id);
+      if (!child) continue;
+
+      const lastLog = ParentResourceLogModel.getLastSent(family.id, 'education_bundle');
+      const targetGap = lastLog?.metadata?.gap_target_days || this.randomBetween(minGap, maxGap);
+
+      if (lastLog) {
+        const daysSince = differenceInCalendarDays(new Date(), new Date(lastLog.sent_at));
+        if (daysSince < targetGap) {
+          continue;
+        }
+      }
+
+      await this.sendEducationBundle(family, child, hubConfig, allowedDomains, targetGap);
+      await this.sleep(800);
+    }
+  }
+
   async sendBookRecommendation(family, child, booksConfig, gapTarget) {
     const topics = (booksConfig.topics || []).join(', ');
 
@@ -271,6 +301,73 @@ export class ParentResourceService {
     });
   }
 
+  async sendEducationBundle(family, child, hubConfig, allowedDomains, gapTarget) {
+    const guardians = GuardianModel.getByFamily(family.id) || [];
+    const notificationStats = InteractionModel.getFamilyNotificationStats(family.id, 'parent_education_hub', 90);
+    const childDay = this.calculateDayOfLife(child.birth_date);
+    const recentResources = this.buildResourceHistorySummary(family.id);
+
+    const context = {
+      messageType: 'parent_education_hub',
+      guardianName: family.family_name,
+      childName: child.name,
+      childAge: this.calculateAge(child.birth_date),
+      childDay,
+      timeOfDay: 'المساء',
+      additionalContext: [
+        hubConfig.categories?.length ? `المسارات: ${hubConfig.categories.join(' | ')}` : null,
+        allowedDomains?.length ? `النطاقات المسموحة للروابط: ${allowedDomains.join(', ')}` : null,
+        recentResources ? `آخر الموارد المرسلة:\n${recentResources}` : null
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      trackMetadata: {
+        title: 'حزمة تعلّم الوالدين',
+        category: 'parents_learning',
+        tone: 'مهني دافئ',
+        focus: 'حزمة يومية تجمع كتاباً/كورساً/فيديوهات خبراء وتمارين ذهنية'
+      },
+      relationshipInsights: this.getRelationshipInsights(family.id),
+      notificationStats,
+      familyId: family.id
+    };
+
+    let message;
+    try {
+      message = await this.llm.generateMessage(context);
+    } catch (error) {
+      console.error('Error generating education hub bundle:', error);
+      message = '📚 حزمة تعلّم اليوم: ملخص كتاب أبوة عملي + كورس 40 دقيقة عن تهدئة الطفل + فيديو يوغا تنفس (https://www.youtube.com/watch?v=5w4rUrwRj8s).';
+    }
+
+    const allowedLink = this.extractAllowedLink(message, allowedDomains);
+    const fallbackLink = this.chooseFallbackLink(hubConfig);
+    const needsFallback = !allowedLink && Boolean(fallbackLink);
+    const finalMessage = needsFallback ? `${message}\n\n🔗 رابط موثوق: ${fallbackLink}` : message;
+
+    if (family.send_to_group && family.family_group_id) {
+      await this.bot.sendMessageToGroup(family.family_group_id, finalMessage);
+      InteractionModel.create(family.id, null, 'parent_education_hub', finalMessage, null);
+    } else {
+      for (const guardian of guardians) {
+        if (!guardian.notification_enabled || !guardian.phone_number) continue;
+        if (hubConfig.buttons?.length) {
+          await this.bot.sendMessageWithButtons(guardian.phone_number, finalMessage, hubConfig.buttons);
+        } else {
+          await this.bot.sendMessage(guardian.phone_number, finalMessage);
+        }
+        InteractionModel.create(family.id, guardian.id, 'parent_education_hub', finalMessage, null);
+      }
+    }
+
+    ParentResourceLogModel.log(family.id, 'education_bundle', this.extractTitle(finalMessage), {
+      gap_target_days: gapTarget,
+      categories: hubConfig.categories || [],
+      allowed_domains: allowedDomains,
+      fallback_used: needsFallback
+    });
+  }
+
   async dispatchToFamily(family, message, buttons = []) {
     if (family.send_to_group && family.family_group_id) {
       await this.bot.sendMessageToGroup(family.family_group_id, message);
@@ -341,6 +438,20 @@ export class ParentResourceService {
     if (!links.length) return null;
     const index = Math.floor(Math.random() * links.length);
     return links[index];
+  }
+
+  buildResourceHistorySummary(familyId) {
+    const recent = ParentResourceLogModel.getRecent(familyId, null, 6);
+    if (!recent.length) return '';
+
+    return recent
+      .map((item) => {
+        const label = item.resource_type || 'resource';
+        const title = item.title || 'بدون عنوان';
+        const date = item.sent_at ? new Date(item.sent_at).toISOString().split('T')[0] : '';
+        return `- ${label}: ${title}${date ? ` (${date})` : ''}`;
+      })
+      .join('\n');
   }
 
   randomBetween(min, max) {

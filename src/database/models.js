@@ -565,6 +565,33 @@ export class ParentResourceLogModel {
       return { ...row, metadata: {} };
     }
   }
+
+  static getRecent(familyId, resourceTypes = null, limit = 5) {
+    const db = getDatabase();
+    let query = `
+      SELECT * FROM parent_resource_logs
+      WHERE family_id = ?
+    `;
+    const params = [familyId];
+
+    if (Array.isArray(resourceTypes) && resourceTypes.length > 0) {
+      const placeholders = resourceTypes.map(() => '?').join(',');
+      query += ` AND resource_type IN (${placeholders})`;
+      params.push(...resourceTypes);
+    }
+
+    query += ' ORDER BY sent_at DESC LIMIT ?';
+    params.push(limit);
+
+    const rows = db.prepare(query).all(...params);
+    return rows.map((row) => {
+      try {
+        return { ...row, metadata: row.metadata ? JSON.parse(row.metadata) : {} };
+      } catch (error) {
+        return { ...row, metadata: {} };
+      }
+    });
+  }
 }
 
 /**

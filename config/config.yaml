@@ -465,6 +465,30 @@ parent_resources:
       - "شاهده الآن ▶️"
       - "أرسله للشريك 🤝"
       - "ذكرني لاحقاً ⏰"
+  education_hub:
+    enabled: true
+    check_time: "20:30"      # فحص مسار التعلم المتكامل مساءً
+    min_gap_days: 4
+    max_gap_days: 6
+    allowed_domains:
+      - "youtube.com"
+      - "youtu.be"
+      - "facebook.com"
+      - "fb.watch"
+      - "who.int"
+      - "unicef.org"
+    categories:
+      - "نصائح طبيب أطفال موثوقة"
+      - "تنمية بشرية وعقلية للوالدين"
+      - "تمارين ذهنية/عقلية قصيرة"
+      - "تأملات واسترخاء منزلي"
+    fallback_links:
+      - "https://www.youtube.com/watch?v=EPsyG2fAukM"
+      - "https://www.youtube.com/watch?v=5w4rUrwRj8s"
+    buttons:
+      - "احفظ الموارد 📌"
+      - "أرسلها للشريك 🤝"
+      - "أريد بدائل أخرى 🔄"
 
 # محادثات العلاقة الزوجية ومتابعة الشكاوى الإيجابية/السلبية
 couple_feedback:
