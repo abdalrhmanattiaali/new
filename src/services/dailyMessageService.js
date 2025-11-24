@@ -3,11 +3,12 @@
  * نظام متكامل لإرسال رسائل متنوعة للأم والأب والطفل والعائلة
  */
 
-import { FamilyModel, GuardianModel, ChildModel, ScheduledMessageModel } from '../database/models.js';
+import { FamilyModel, GuardianModel, ChildModel } from '../database/models.js';
 import { LLMService } from '../ai/llm.js';
 import { WeatherService } from './weatherService.js';
 import PresenceService from './presenceService.js';
 import { format } from 'date-fns';
+import NotificationOrchestrator from './notificationOrchestrator.js';
 
 export class DailyMessageService {
   constructor(bot, config) {
@@ -16,6 +17,7 @@ export class DailyMessageService {
     this.llm = new LLMService(config);
     this.weatherService = new WeatherService(config);
     this.presenceService = new PresenceService();
+    this.notifications = new NotificationOrchestrator(config);
   }
 
   /**
@@ -161,6 +163,7 @@ export class DailyMessageService {
 
     // توليد الرسالة بالذكاء الاصطناعي
     const messageContent = await this.generateChildMessage(
+      family.id,
       child.name,
       childAge,
       messageType,
@@ -186,6 +189,7 @@ export class DailyMessageService {
     const timeOfDay = this.getTimeOfDay(time);
 
     const messageContent = await this.generateMotherMessage(
+      family.id,
       mother.name,
       child.name,
       childAge,
@@ -211,6 +215,7 @@ export class DailyMessageService {
     const presenceContext = this.presenceService.buildContext(father.id);
 
     const messageContent = await this.generateFatherMessage(
+      family.id,
       father.name,
       child.name,
       childAge,
@@ -238,6 +243,7 @@ export class DailyMessageService {
     const timeOfDay = this.getTimeOfDay(time);
 
     const messageContent = await this.generateFamilyMessage(
+      family.id,
       family.family_name,
       child.name,
       childAge,
@@ -257,7 +263,7 @@ export class DailyMessageService {
   /**
    * توليد رسالة للطفل بالذكاء الاصطناعي
    */
-  async generateChildMessage(childName, childAge, messageType, timeOfDay, weatherContext) {
+  async generateChildMessage(familyId, childName, childAge, messageType, timeOfDay, weatherContext) {
     const prompts = {
       child_sleep: `اكتب رسالة قصيرة (3-4 جمل) للوالدين عن نوم ${childName} (${this.formatAge(childAge)}).
         - نصيحة عملية لتحسين نوم الطفل
@@ -305,7 +311,8 @@ export class DailyMessageService {
         childName,
         childAge: this.formatAge(childAge),
         timeOfDay,
-        additionalContext: prompt
+        additionalContext: prompt,
+        familyId
       });
 
       return message;
@@ -318,7 +325,7 @@ export class DailyMessageService {
   /**
    * توليد رسالة للأم بالذكاء الاصطناعي
    */
-  async generateMotherMessage(motherName, childName, childAge, messageType, timeOfDay) {
+  async generateMotherMessage(familyId, motherName, childName, childAge, messageType, timeOfDay) {
     const prompts = {
       mother_selfcare: `اكتب رسالة دافئة ومحفزة (3-4 جمل) للأم ${motherName} عن العناية بنفسها.
         - نصيحة بسيطة للعناية الذاتية (5-10 دقائق)
@@ -360,7 +367,8 @@ export class DailyMessageService {
         childName,
         childAge: this.formatAge(childAge),
         timeOfDay,
-        additionalContext: prompt
+        additionalContext: prompt,
+        familyId
       });
 
       return `💙 *رسالة خاصة للأم*\n\n${message}`;
@@ -374,6 +382,7 @@ export class DailyMessageService {
    * توليد رسالة للأب بالذكاء الاصطناعي
    */
   async generateFatherMessage(
+    familyId,
     fatherName,
     childName,
     childAge,
@@ -429,7 +438,8 @@ export class DailyMessageService {
         childName,
         childAge: this.formatAge(childAge),
         timeOfDay,
-        additionalContext: `${prompt}\n\n${presenceHint}`
+        additionalContext: `${prompt}\n\n${presenceHint}`,
+        familyId
       });
 
       return `💙 *رسالة خاصة للأب*\n\n${message}`;
@@ -442,7 +452,7 @@ export class DailyMessageService {
   /**
    * توليد رسالة للعائلة بالذكاء الاصطناعي
    */
-  async generateFamilyMessage(familyName, childName, childAge, messageType, timeOfDay) {
+  async generateFamilyMessage(familyId, familyName, childName, childAge, messageType, timeOfDay) {
     const prompts = {
       family_bonding: `اكتب رسالة (3-4 جمل) لعائلة ${familyName} عن الترابط العائلي.
         - نشاط عائلي بسيط
@@ -484,7 +494,8 @@ export class DailyMessageService {
         childName,
         childAge: this.formatAge(childAge),
         timeOfDay,
-        additionalContext: prompt
+        additionalContext: prompt,
+        familyId
       });
 
       return `👨‍👩‍👧 *رسالة للعائلة*\n\n${message}`;
@@ -525,14 +536,16 @@ export class DailyMessageService {
 
     const buttons = this.config.ui?.buttons || ['تم ✅', 'ذكّرني لاحقاً ⏰'];
 
-    ScheduledMessageModel.create(
-      family.id,
-      targetGuardian.id,
+    this.notifications.schedule({
+      familyId: family.id,
+      guardianId: targetGuardian.id,
       messageType,
-      messageContent,
-      format(scheduledTime, 'yyyy-MM-dd HH:mm:ss'),
-      buttons
-    );
+      content: messageContent,
+      scheduledTime: format(scheduledTime, 'yyyy-MM-dd HH:mm:ss'),
+      buttons,
+      slotLabel: time,
+      metadata: { recipient }
+    });
   }
 
   /**

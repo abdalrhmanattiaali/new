@@ -283,6 +283,29 @@ export const schema = {
     )
   `,
 
+  // سجل موحد لجميع الإشعارات
+  notification_history: `
+    CREATE TABLE IF NOT EXISTS notification_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      family_id INTEGER NOT NULL,
+      guardian_id INTEGER,
+      message_type TEXT NOT NULL,
+      sequence INTEGER DEFAULT 1,
+      status TEXT DEFAULT 'scheduled',
+      content TEXT,
+      scheduled_message_id INTEGER,
+      scheduled_time DATETIME,
+      sent_at DATETIME,
+      slot_label TEXT,
+      metadata TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE,
+      FOREIGN KEY (guardian_id) REFERENCES guardians(id) ON DELETE SET NULL,
+      FOREIGN KEY (scheduled_message_id) REFERENCES scheduled_messages(id) ON DELETE SET NULL
+    )
+  `,
+
   // جدول تتبع رسائل الروتين الروحاني
   spiritual_routine_logs: `
     CREATE TABLE IF NOT EXISTS spiritual_routine_logs (
@@ -593,6 +616,9 @@ export const indexes = [
   'CREATE INDEX IF NOT EXISTS idx_tracking_child ON daily_tracking(child_id)',
   'CREATE INDEX IF NOT EXISTS idx_tracking_date ON daily_tracking(tracking_date)',
   'CREATE INDEX IF NOT EXISTS idx_scheduled_time ON scheduled_messages(scheduled_time)',
+  'CREATE INDEX IF NOT EXISTS idx_notification_history_family ON notification_history(family_id)',
+  'CREATE INDEX IF NOT EXISTS idx_notification_history_type ON notification_history(message_type)',
+  'CREATE INDEX IF NOT EXISTS idx_notification_history_sent ON notification_history(sent_at)',
   'CREATE INDEX IF NOT EXISTS idx_content_category ON content_items(category)',
 
   // New indexes for journey features

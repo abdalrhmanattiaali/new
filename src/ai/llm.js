@@ -5,8 +5,10 @@
 
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
+import { format } from 'date-fns';
 
 import { KnowledgeBase } from './knowledgeBase.js';
+import { NotificationHistoryModel } from '../database/models.js';
 
 dotenv.config();
 
@@ -56,12 +58,37 @@ export class LLMService {
       childAge,
       timeOfDay,
       previousInteractions,
-      additionalContext
+      additionalContext,
+      familyId
     } = context;
+
+    let notificationStats = context.notificationStats;
+    let notificationDigest = context.notificationDigest;
+
+    if (familyId) {
+      const snapshot = NotificationHistoryModel.getSnapshot(
+        familyId,
+        this.config?.ai?.memory?.notification_digest_limit || 18
+      );
+
+      if (!notificationStats) {
+        notificationStats = snapshot.stats;
+      }
+
+      if (!notificationDigest || notificationDigest.length === 0) {
+        notificationDigest = snapshot.digest.map((entry) => {
+          const label = `${entry.message_type}#${entry.sequence}`;
+          const tsLabel = entry.ts ? format(new Date(entry.ts), 'dd MMM HH:mm') : 'بدون وقت';
+          return `${label} (${entry.status}) @ ${tsLabel}: ${entry.snippet}`;
+        });
+      }
+    }
 
     const { snippets: knowledgeSnippets, hints: knowledgeHints } = await this.retrieveKnowledge(context);
     const userPrompt = this.buildPrompt({
       ...context,
+      notificationStats,
+      notificationDigest,
       knowledgeSnippets,
       knowledgeHints
     });

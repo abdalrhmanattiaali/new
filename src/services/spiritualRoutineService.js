@@ -10,11 +10,11 @@ import {
   FamilyModel,
   GuardianModel,
   ChildModel,
-  ScheduledMessageModel,
   SpiritualRoutineLogModel,
   SpiritualCustomRequestModel
 } from '../database/models.js';
 import { LLMService } from '../ai/llm.js';
+import NotificationOrchestrator from './notificationOrchestrator.js';
 
 const SAT_TO_WED_DAYS = [6, 0, 1, 2, 3];
 const THURSDAY_DAY = [4];
@@ -1016,6 +1016,7 @@ export class SpiritualRoutineService {
     this.config = config;
 
     this.llm = new LLMService(config);
+    this.notifications = new NotificationOrchestrator(config);
 
     this.apiKey = global.ELEVENLABS_API_KEY || process.env.ELEVENLABS_API_KEY;
     this.voiceId =
@@ -1107,14 +1108,16 @@ export class SpiritualRoutineService {
 
         const buttons = this.getRoutineButtons(routine, slot.buttons);
 
-        const scheduledId = ScheduledMessageModel.create(
-          family.id,
-          referenceGuardian.id,
-          `spiritual_routine:${routine.id}`,
-          messageContent,
-          format(scheduledDate, 'yyyy-MM-dd HH:mm:ss'),
-          buttons
-        );
+        const scheduledId = this.notifications.schedule({
+          familyId: family.id,
+          guardianId: referenceGuardian.id,
+          messageType: `spiritual_routine:${routine.id}`,
+          content: messageContent,
+          scheduledTime: format(scheduledDate, 'yyyy-MM-dd HH:mm:ss'),
+          buttons,
+          slotLabel: slotTime,
+          metadata: { routine: routine.id }
+        });
 
         SpiritualRoutineLogModel.logSchedule({
           familyId: family.id,

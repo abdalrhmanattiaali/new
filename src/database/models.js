@@ -5,6 +5,7 @@
 
 import { getDatabase } from './init.js';
 import { createHash } from 'crypto';
+import { format } from 'date-fns';
 
 /**
  * Family Model
@@ -675,6 +676,144 @@ export class ScheduledMessageModel {
       WHERE sent = 1 AND sent_at < datetime('now', '-' || ? || ' days')
     `);
     return stmt.run(daysOld);
+  }
+}
+
+/**
+ * Unified Notification History Model
+ */
+export class NotificationHistoryModel {
+  static record({
+    familyId,
+    guardianId,
+    messageType,
+    content,
+    scheduledTime = null,
+    slotLabel = null,
+    metadata = null,
+    scheduledMessageId = null
+  }) {
+    const db = getDatabase();
+    const sequence = this.nextSequence(familyId, messageType);
+    const stmt = db.prepare(`
+      INSERT INTO notification_history (
+        family_id, guardian_id, message_type, sequence, status, content,
+        scheduled_message_id, scheduled_time, slot_label, metadata
+      )
+      VALUES (?, ?, ?, ?, 'scheduled', ?, ?, ?, ?, ?)
+    `);
+
+    const result = stmt.run(
+      familyId,
+      guardianId || null,
+      messageType,
+      sequence,
+      content || null,
+      scheduledMessageId || null,
+      scheduledTime || null,
+      slotLabel || null,
+      metadata ? JSON.stringify(metadata) : null
+    );
+
+    return result.lastInsertRowid;
+  }
+
+  static nextSequence(familyId, messageType) {
+    const db = getDatabase();
+    const row = db
+      .prepare(
+        `SELECT COALESCE(MAX(sequence), 0) + 1 AS nextSeq
+         FROM notification_history
+         WHERE family_id = ? AND message_type = ?`
+      )
+      .get(familyId, messageType);
+    return row?.nextSeq || 1;
+  }
+
+  static linkScheduled(historyId, scheduledMessageId) {
+    if (!historyId || !scheduledMessageId) return;
+    const db = getDatabase();
+    db.prepare(
+      `UPDATE notification_history
+       SET scheduled_message_id = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`
+    ).run(scheduledMessageId, historyId);
+  }
+
+  static markSentByScheduledId(scheduledMessageId) {
+    if (!scheduledMessageId) return;
+    const db = getDatabase();
+    db.prepare(
+      `UPDATE notification_history
+       SET status = 'sent', sent_at = CURRENT_TIMESTAMP
+       WHERE scheduled_message_id = ?`
+    ).run(scheduledMessageId);
+  }
+
+  static getStats(familyId) {
+    const db = getDatabase();
+    const totalRow = db
+      .prepare(
+        `SELECT COUNT(*) as total
+         FROM notification_history
+         WHERE family_id = ?`
+      )
+      .get(familyId);
+
+    const byTypeRows = db
+      .prepare(
+        `SELECT message_type, COUNT(*) as count, MAX(sent_at) as last_sent
+         FROM notification_history
+         WHERE family_id = ?
+         GROUP BY message_type`
+      )
+      .all(familyId);
+
+    const typeCounts = {};
+    byTypeRows.forEach(row => {
+      typeCounts[row.message_type] = {
+        count: row.count,
+        lastSent: row.last_sent
+      };
+    });
+
+    return { total: totalRow?.total || 0, typeCounts };
+  }
+
+  static getRecentDigest(familyId, limit = 12) {
+    const db = getDatabase();
+    const rows = db
+      .prepare(
+        `SELECT message_type, sequence, status, content,
+                COALESCE(sent_at, scheduled_time, created_at) as ts
+         FROM notification_history
+         WHERE family_id = ?
+         ORDER BY created_at DESC
+         LIMIT ?`
+      )
+      .all(familyId, limit);
+
+    return rows.map(row => ({
+      message_type: row.message_type,
+      sequence: row.sequence,
+      status: row.status,
+      ts: row.ts ? format(new Date(row.ts), 'yyyy-MM-dd HH:mm') : null,
+      snippet: this.truncateText(row.content)
+    }));
+  }
+
+  static getSnapshot(familyId, limit = 12) {
+    return {
+      digest: this.getRecentDigest(familyId, limit),
+      stats: this.getStats(familyId)
+    };
+  }
+
+  static truncateText(text, max = 140) {
+    if (!text) return '';
+    const clean = `${text}`.replace(/\s+/g, ' ').trim();
+    if (clean.length <= max) return clean;
+    return `${clean.slice(0, max)}…`;
   }
 }
 

@@ -10,12 +10,14 @@ import {
   InteractionModel,
   ScheduledMessageModel,
   SpiritualRoutineLogModel,
-  CoupleFeedbackModel
+  CoupleFeedbackModel,
+  NotificationHistoryModel
 } from '../database/models.js';
 import { LLMService } from '../ai/llm.js';
 import { WeatherService } from './weatherService.js';
 import { format } from 'date-fns';
 import { getDatabase } from '../database/init.js';
+import NotificationOrchestrator from './notificationOrchestrator.js';
 
 const TRACK_METADATA = {
   child_sleep: {
@@ -90,6 +92,7 @@ export class MessageEngine {
     this.config = config;
     this.llm = new LLMService(config);
     this.weatherService = new WeatherService(config);
+    this.notifications = new NotificationOrchestrator(config);
   }
 
   /**
@@ -219,12 +222,8 @@ export class MessageEngine {
       previousInteractions = InteractionModel.getByFamily(family.id, memoryLimit);
     }
 
-    const notificationStats = family
-      ? InteractionModel.getFamilyNotificationStats(family.id, messageType, 45)
-      : null;
-    const notificationDigest = family
-      ? this.buildNotificationDigest(family.id, notificationStats)
-      : [];
+    const notificationStats = family ? NotificationHistoryModel.getStats(family.id) : null;
+    const notificationDigest = family ? this.buildNotificationDigest(family.id) : [];
 
     const activeIssues = this.getActiveIssuesForFamily(family?.id);
     const relationshipInsights = this.getRelationshipInsightsForFamily(family?.id);
@@ -260,30 +259,15 @@ export class MessageEngine {
     };
   }
 
-  buildNotificationDigest(familyId, notificationStats) {
+  buildNotificationDigest(familyId) {
     const digestLimit = this.config.ai?.memory?.notification_digest_limit || 18;
-    const recent = InteractionModel.getRecentNotificationDigest(familyId, digestLimit);
-    if (!recent.length) return [];
+    const snapshot = NotificationHistoryModel.getSnapshot(familyId, digestLimit);
+    if (!snapshot.digest.length) return [];
 
-    const typeCounters = {};
-    const totals = notificationStats?.typeCounts || {};
-
-    return recent.map((entry) => {
-      const type = entry.message_type || 'general';
-      typeCounters[type] = (typeCounters[type] || 0) + 1;
-
-      const totalForType = totals[type]?.count;
-      const sequence =
-        typeof totalForType === 'number'
-          ? `${type}#${Math.max(totalForType - typeCounters[type] + 1, 1)}`
-          : `${type}#r${typeCounters[type]}`;
-
-      const timestamp = entry.created_at
-        ? format(new Date(entry.created_at), 'dd MMM HH:mm')
-        : 'بدون وقت';
-
-      const snippet = this.truncateText(entry.message_content);
-      return `${sequence} @ ${timestamp}: ${snippet}`;
+    return snapshot.digest.map((entry) => {
+      const sequence = `${entry.message_type}#${entry.sequence}`;
+      const timestamp = entry.ts ? format(new Date(entry.ts), 'dd MMM HH:mm') : 'بدون وقت';
+      return `${sequence} @ ${timestamp}: ${entry.snippet}`;
     });
   }
 
@@ -431,15 +415,15 @@ export class MessageEngine {
       return;
     }
 
-    // Save to database
-    ScheduledMessageModel.create(
-      guardian.family_id,
-      guardian.id,
+    this.notifications.schedule({
+      familyId: guardian.family_id,
+      guardianId: guardian.id,
       messageType,
-      messageContent,
-      format(scheduledTime, 'yyyy-MM-dd HH:mm:ss'),
-      buttons
-    );
+      content: messageContent,
+      scheduledTime: format(scheduledTime, 'yyyy-MM-dd HH:mm:ss'),
+      buttons,
+      slotLabel: time
+    });
 
     console.log(`✅ Scheduled ${messageType} for ${guardian.name} at ${time}`);
   }
@@ -511,6 +495,7 @@ export class MessageEngine {
 
         // Mark as sent
         ScheduledMessageModel.markAsSent(message.id);
+        this.notifications.markSent(message.id);
 
         if (message.message_type?.startsWith('spiritual_routine')) {
           SpiritualRoutineLogModel.markDeliveredByScheduledMessage(message.id);
@@ -744,14 +729,15 @@ export class MessageEngine {
     // Save to database (using first guardian as reference)
     const guardians = GuardianModel.getByFamily(family.id);
     if (guardians.length > 0) {
-      ScheduledMessageModel.create(
-        family.id,
-        guardians[0].id, // Reference guardian
+      this.notifications.schedule({
+        familyId: family.id,
+        guardianId: guardians[0].id,
         messageType,
-        messageContent,
-        format(scheduledTime, 'yyyy-MM-dd HH:mm:ss'),
-        buttons
-      );
+        content: messageContent,
+        scheduledTime: format(scheduledTime, 'yyyy-MM-dd HH:mm:ss'),
+        buttons,
+        slotLabel: time
+      });
 
       console.log(`✅ Scheduled ${messageType} for group ${family.family_name} at ${time}`);
     }

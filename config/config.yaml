@@ -149,6 +149,7 @@ tracks:
 # نظام الإشعارات الموحد
 notifications:
   per_hour_limit: 1
+  manifest: "./config/notification_manifest.json"
   timeline:
     weekday:
       - id: daily_0630_morning_blessing
