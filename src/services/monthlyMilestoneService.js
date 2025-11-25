@@ -9,6 +9,8 @@ import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { OpenAIClient } from '../utils/openaiClient.js';
+import { getMilestoneContext, getMilestoneHighlights } from '../utils/milestoneLibrary.js';
+import { getDatabase } from '../database/init.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -25,6 +27,11 @@ export class MonthlyMilestoneService {
    * Check and send monthly milestone reminders
    */
   async checkAndSendMonthlyReminders() {
+    if (this.config?.celebrations?.child_monthly?.enabled === false) {
+      console.log('⏸️ Monthly milestone reminders disabled via config.');
+      return;
+    }
+
     console.log('📅 Checking monthly milestone reminders...');
 
     const db = new Database(this.dbPath);
@@ -53,10 +60,15 @@ export class MonthlyMilestoneService {
           if (ageInMonths === 0) continue;
 
           // Generate and send monthly milestone message
+          const context = this.buildFamilyContext(db, child.family_id, child.id);
+          const milestoneContext = getMilestoneContext(ageInMonths);
           const message = await this.generateMonthlyMilestoneMessage(
             child.name,
             ageInMonths,
-            birthDate
+            birthDate,
+            milestoneContext,
+            context,
+            child.family_name
           );
 
           await this.sendToFamily(
@@ -81,7 +93,14 @@ export class MonthlyMilestoneService {
   /**
    * Generate monthly milestone message
    */
-  async generateMonthlyMilestoneMessage(childName, ageInMonths, birthDate) {
+  async generateMonthlyMilestoneMessage(
+    childName,
+    ageInMonths,
+    birthDate,
+    milestoneContext,
+    context,
+    familyName
+  ) {
     // Calculate years and months
     const years = Math.floor(ageInMonths / 12);
     const months = ageInMonths % 12;
@@ -102,34 +121,63 @@ export class MonthlyMilestoneService {
       ageString = `${years} سنوات و${months} شهر`;
     }
 
+    const milestoneHighlights = milestoneContext?.monthlyHighlights || getMilestoneHighlights(ageInMonths);
+    const formattedHistory = context.interactions
+      .slice(0, 8)
+      .map((interaction) => `- ${interaction.message_type || 'رسالة'}: ${interaction.message_content?.slice(0, 110) || ''}`)
+      .join('\n');
+    const formattedIssues = context.issues
+      .slice(0, 5)
+      .map(
+        (issue) =>
+          `- ${issue.issue_title || issue.issue_type} (${issue.severity || 'متوسط'}): ${issue.status || 'متابعة'}`
+      )
+      .join('\n');
+    const formattedCoupleNotes = context.coupleNotes
+      .slice(0, 3)
+      .map((note, index) => `#${index + 1} إيجابي: ${note.positives || ''} | تحدي: ${note.challenges || ''}`)
+      .join('\n');
+
     const systemPrompt = `أنت خبير تطوير الأطفال تكتب رسائل احتفالية شهرية للوالدين.
 تحتفي بنمو الطفل وتذكر الوالدين بالإنجازات والمعالم التطورية.
-تستخدم لغة دافئة ومحفزة بالعربية الفصحى.`;
+تستخدم لغة دافئة ومحفزة بالعربية الفصحى، وتربط النص بسجل العائلة وملاحظات الزوجين والمشكلات الصحية القائمة.
+تضيف اقتباسًا ملهمًا أو آية أو حديثًا مختلفًا كل مرة دون تكرار القوالب.`;
 
-    const userPrompt = `اكتب رسالة احتفالية شهرية للوالدين بمناسبة إتمام طفلهم ${childName} شهراً جديداً.
+    const userPrompt = `اكتب رسالة احتفالية شهرية للوالدين بمناسبة إتمام طفلهم ${childName} (${familyName}) شهراً جديداً.
 
-**معلومات:**
+**معلومات أساسية:**
 - اسم الطفل: ${childName}
 - العمر الآن: ${ageString}
 - العمر بالشهور: ${ageInMonths} شهر
+- المرحلة: ${milestoneContext.stageName}
+- أعمدة النمو الرئيسية: ${milestoneContext.growthPillars?.join(', ')}
+- علامات خطر راقِبها: ${milestoneContext.riskSigns?.join('; ')}
+- مرتكز إيماني: ${milestoneContext.spiritualAnchor}
+- حكمة نبوية: ${milestoneContext.propheticWisdom}
+- اقتباس ملهم: ${milestoneContext.inspirationalQuote}
 
-**المطلوب:**
-1. عنوان احتفالي (🎉 ${childName} أكمل ${ageString}!)
-2. تهنئة دافئة للوالدين
-3. ملخص للمعالم المتوقعة في هذا الشهر:
-   ${this.getMilestoneHints(ageInMonths)}
-4. كلمات تشجيع للوالدين
-5. تذكير بأن كل طفل ينمو بوتيرته الخاصة
-6. دعوة لطيفة
+**سجل العائلة الحديث:**
+${formattedHistory || '- لا توجد تفاعلات مسجلة بعد.'}
+
+**المشكلات/القضايا النشطة للطفل:**
+${formattedIssues || '- لا توجد قضايا نشطة مسجلة.'}
+
+**مقتطفات من مراجعة الزوجين:**
+${formattedCoupleNotes || '- لا توجد ملاحظات حديثة.'}
+
+**المطلوب في الرسالة:**
+1) عنوان احتفالي (ابدأ بـ: 🎉 *${childName} أكمل ${ageString}!*).
+2) فقرة تهنئة + امتنان للوالدين تربط بما حدث هذا الشهر (استخدم عنصر من سجل العائلة أو حوار الزوجين).
+3) فقرة رحلة النمو: لخص المعالم (${milestoneHighlights}) مع قصة واقعية قصيرة (${milestoneContext.longStoryHook}) بطول 80-120 كلمة.
+4) فقرة ما القادم؟ اذكر نظرة مستقبلية (${milestoneContext.lookAhead}) مع اقتراح نشاط وتذكير علامة خطر واحدة.
+5) فقرة إيمانية: استشهد بالآية أو الحديث أعلاه باختصار + دعاء شخصي للطفل.
+6) فقرة تحفيزية للوالدين: تشجع على تدوين ملاحظة جديدة هذا الشهر.
 
 **المواصفات:**
-- الطول: 180-250 كلمة
-- لغة احتفالية دافئة
-- إيموجي مناسب
-- ابدأ بـ: 🎉 *${childName} أكمل ${ageString}!*
-- اجعل الرسالة مميزة ومحفزة
-
-اجعل الوالدين فخورين بتطور طفلهم!`;
+- الطول الإجمالي: 220-280 كلمة.
+- لغة احتفالية، دافئة، وغير مكررة.
+- اربط النص بسجل العائلة والمشاكل النشطة دون إفشاء معلومات حساسة.
+- اختم بدعوة عملية واحدة واضحة (مثلاً: شاركوا لحظة نجاح أو صورة اليوم).`;
 
     try {
       const message = await this.claude.generateText(systemPrompt, userPrompt, {
@@ -146,38 +194,53 @@ export class MonthlyMilestoneService {
     }
   }
 
-  /**
-   * Get milestone hints for AI prompt based on age
-   */
-  getMilestoneHints(ageInMonths) {
-    const hints = {
-      1: '- حركات أقل عشوائية\n- يبدأ الابتسام الاجتماعي\n- يتتبع الوجوه',
-      2: '- رفع الرأس أعلى\n- المناغاة تبدأ\n- يميز الأصوات',
-      3: '- يضحك بصوت عالٍ\n- يمسك الأشياء\n- يرفع صدره عند وقت البطن',
-      4: '- قد يتدحرج\n- يجلس بدعم\n- ينقل الأشياء بين اليدين',
-      5: '- يتدحرج في الاتجاهين\n- يجلس بوسائد\n- يلعب بأصابع قدميه',
-      6: '- يجلس بدون دعم\n- قد يبدأ الحبو\n- **بداية الطعام الصلب**',
-      7: '- يحبو أو يستعد للحبو\n- يشد نفسه للوقوف\n- يطعم نفسه finger foods',
-      8: '- الحبو بثقة\n- يمشي ممسكاً بالأثاث\n- قبضة الكماشة متقنة',
-      9: '- cruising (مشي بالتمسك)\n- يشير لما يريد\n- يفهم "لا"',
-      10: '- قد يقف بدون مساعدة\n- يقلد الأفعال\n- يتبع أوامر بسيطة',
-      11: '- قد يخطو خطوات\n- يمسك كوب بيديه\n- يقلب صفحات',
-      12: '- **عيد الميلاد الأول!**\n- قد يمشي\n- أول كلمة حقيقية\n- يفهم 50-100 كلمة',
-      15: '- يمشي بثقة\n- يركل كرة\n- 5-20 كلمة',
-      18: '- يجري\n- يصعد الدرج\n- انفجار لغوي (50+ كلمة)\n- نوبات غضب قد تبدأ',
-      24: '- **عيد الميلاد الثاني!**\n- يقفز\n- جمل من كلمتين\n- لعب تخيلي'
-    };
+  buildFamilyContext(db, familyId, childId) {
+    const localDb = db || getDatabase();
 
-    // Find closest milestone
-    const ages = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 18, 24];
-    let closestAge = ages[0];
-    for (const age of ages) {
-      if (ageInMonths >= age) {
-        closestAge = age;
+    try {
+      const interactions = localDb
+        .prepare(
+          `SELECT message_type, message_content
+           FROM interactions
+           WHERE family_id = ?
+           ORDER BY created_at DESC
+           LIMIT 20`
+        )
+        .all(familyId);
+
+      const issues = localDb
+        .prepare(
+          `SELECT issue_title, issue_type, severity, status
+           FROM child_issues
+           WHERE family_id = ? AND child_id = ? AND status IN ('active', 'monitoring')
+           ORDER BY updated_at DESC
+           LIMIT 10`
+        )
+        .all(familyId, childId);
+
+      const coupleNotes = localDb
+        .prepare(
+          `SELECT positives, challenges
+           FROM couple_feedback_logs
+           WHERE family_id = ?
+           ORDER BY created_at DESC
+           LIMIT 5`
+        )
+        .all(familyId);
+
+      return { interactions, issues, coupleNotes };
+    } catch (error) {
+      console.warn('MonthlyMilestoneService: failed to build context:', error.message);
+      return { interactions: [], issues: [], coupleNotes: [] };
+    } finally {
+      if (!db && localDb) {
+        try {
+          localDb.close();
+        } catch (closeError) {
+          console.warn('MonthlyMilestoneService: failed to close context db:', closeError.message);
+        }
       }
     }
-
-    return hints[closestAge] || '- تطور مستمر في جميع المجالات\n- نمو جسدي ومعرفي\n- مهارات اجتماعية';
   }
 
   /**

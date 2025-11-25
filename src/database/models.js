@@ -4,6 +4,8 @@
  */
 
 import { getDatabase } from './init.js';
+import { createHash } from 'crypto';
+import { format } from 'date-fns';
 
 /**
  * Family Model
@@ -86,6 +88,40 @@ export class GuardianModel {
 }
 
 /**
+ * Guardian Presence Log Model
+ */
+export class GuardianPresenceLogModel {
+  static create(guardianId, status, notes = null, source = 'manual') {
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      INSERT INTO guardian_presence_logs (guardian_id, status, notes, source)
+      VALUES (?, ?, ?, ?)
+    `);
+    return stmt.run(guardianId, status, notes, source);
+  }
+
+  static getLatest(guardianId) {
+    const db = getDatabase();
+    return db
+      .prepare(
+        'SELECT * FROM guardian_presence_logs WHERE guardian_id = ? ORDER BY created_at DESC LIMIT 1'
+      )
+      .get(guardianId);
+  }
+
+  static hasRecentEntry(guardianId, hours = 8) {
+    const db = getDatabase();
+    return db
+      .prepare(
+        `SELECT 1 FROM guardian_presence_logs
+         WHERE guardian_id = ? AND created_at >= datetime('now', ?)
+         ORDER BY created_at DESC LIMIT 1`
+      )
+      .get(guardianId, `-${hours} hours`);
+  }
+}
+
+/**
  * Child Model
  */
 export class ChildModel {
@@ -154,6 +190,67 @@ export class InteractionModel {
     `).all(guardianId, limit);
   }
 
+  static getByFamily(familyId, limit = 50) {
+    const db = getDatabase();
+    return db.prepare(`
+      SELECT * FROM interactions
+      WHERE family_id = ?
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(familyId, limit);
+  }
+
+  static getFamilyNotificationStats(familyId, messageType = null, windowDays = 30) {
+    const db = getDatabase();
+    const rows = db
+      .prepare(
+        `SELECT message_type, created_at FROM interactions
+         WHERE family_id = ?
+         ORDER BY created_at DESC
+         LIMIT 600`
+      )
+      .all(familyId);
+
+    const now = Date.now();
+    const windowMs = windowDays * 24 * 60 * 60 * 1000;
+
+    const typeCounts = {};
+    let recentCount = 0;
+
+    rows.forEach((row) => {
+      const createdAt = row.created_at ? new Date(row.created_at).getTime() : null;
+
+      if (!typeCounts[row.message_type]) {
+        typeCounts[row.message_type] = {
+          count: 0,
+          lastSentAt: row.created_at || null,
+          recent: 0
+        };
+      }
+
+      typeCounts[row.message_type].count += 1;
+
+      if (createdAt && now - createdAt <= windowMs) {
+        typeCounts[row.message_type].recent += 1;
+        recentCount += 1;
+      }
+    });
+
+    const lastSentAt = rows[0]?.created_at || null;
+    const nextSequenceForType = messageType
+      ? (typeCounts[messageType]?.count || 0) + 1
+      : null;
+
+    return {
+      totalSent: rows.length,
+      lastSentAt,
+      recentWindowDays: windowDays,
+      recentCount,
+      typeCounts,
+      nextSequenceForType
+    };
+  }
+
   static getStats(guardianId) {
     const db = getDatabase();
     return db.prepare(`
@@ -164,6 +261,158 @@ export class InteractionModel {
       FROM interactions
       WHERE guardian_id = ?
     `).get(guardianId);
+  }
+
+  static getRecentNotificationDigest(familyId, limit = 30) {
+    const db = getDatabase();
+    const rows = db.prepare(
+      `SELECT id, message_type, message_content, created_at
+       FROM interactions
+       WHERE family_id = ?
+       ORDER BY created_at DESC
+       LIMIT ?`
+    ).all(familyId, limit);
+
+    return rows.map((row) => ({
+      id: row.id,
+      message_type: row.message_type || 'general',
+      created_at: row.created_at,
+      message_content: row.message_content || ''
+    }));
+  }
+}
+
+/**
+ * Conversation Session Model
+ */
+export class ConversationSessionModel {
+  static create({ familyId, type, topic = null, participants = [], metadata = {} }) {
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      INSERT INTO conversation_sessions (family_id, type, topic, participants, metadata)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(
+      familyId,
+      type,
+      topic,
+      JSON.stringify(participants || []),
+      JSON.stringify(metadata || {})
+    );
+    return this.getById(result.lastInsertRowid);
+  }
+
+  static updateMetadata(id, metadata = {}) {
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      UPDATE conversation_sessions
+      SET metadata = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+    stmt.run(JSON.stringify(metadata || {}), id);
+    return this.getById(id);
+  }
+
+  static updateParticipants(id, participants = []) {
+    const db = getDatabase();
+    db.prepare(`
+      UPDATE conversation_sessions
+      SET participants = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(JSON.stringify(participants || []), id);
+  }
+
+  static updateStatus(id, status = 'closed') {
+    const db = getDatabase();
+    db.prepare(`
+      UPDATE conversation_sessions
+      SET status = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(status, id);
+  }
+
+  static touch(id) {
+    const db = getDatabase();
+    db.prepare(`
+      UPDATE conversation_sessions
+      SET updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(id);
+  }
+
+  static getById(id) {
+    const db = getDatabase();
+    return db.prepare('SELECT * FROM conversation_sessions WHERE id = ?').get(id);
+  }
+
+  static getOpenByFamily(familyId) {
+    const db = getDatabase();
+    return db.prepare(`
+      SELECT * FROM conversation_sessions
+      WHERE family_id = ? AND status = 'open'
+      ORDER BY updated_at DESC
+    `).all(familyId);
+  }
+}
+
+/**
+ * Conversation Messages Model
+ */
+export class ConversationMessageModel {
+  static log({ sessionId, authorType, guardianId = null, message }) {
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      INSERT INTO conversation_messages (session_id, author_type, guardian_id, message_content)
+      VALUES (?, ?, ?, ?)
+    `);
+    stmt.run(sessionId, authorType, guardianId, message);
+  }
+
+  static getBySession(sessionId, limit = 50) {
+    const db = getDatabase();
+    return db.prepare(`
+      SELECT * FROM conversation_messages
+      WHERE session_id = ?
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(sessionId, limit);
+  }
+}
+
+/**
+ * Interactive Notification Model
+ */
+export class InteractiveNotificationModel {
+  static log({ familyId, guardianId = null, topic = null, aiReason = null, messageText = null, payload = {} }) {
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      INSERT INTO interactive_notifications (family_id, guardian_id, topic, ai_reason, message_text, decision_payload)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(familyId, guardianId, topic, aiReason, messageText, JSON.stringify(payload || {}));
+  }
+
+  static countForFamilyToday(familyId) {
+    const db = getDatabase();
+    const row = db.prepare(`
+      SELECT COUNT(*) as total
+      FROM interactive_notifications
+      WHERE family_id = ? AND DATE(sent_at) = DATE('now', 'localtime')
+    `).get(familyId);
+    return row?.total || 0;
+  }
+
+  static lastSentWithinMinutes(familyId, minutes = 60) {
+    const db = getDatabase();
+    const row = db.prepare(`
+      SELECT sent_at FROM interactive_notifications
+      WHERE family_id = ?
+      ORDER BY sent_at DESC
+      LIMIT 1
+    `).get(familyId);
+    if (!row?.sent_at) return false;
+    const sent = new Date(row.sent_at).getTime();
+    return Date.now() - sent < minutes * 60 * 1000;
   }
 }
 
@@ -218,8 +467,11 @@ export class AIProfileModel {
 /**
  * Weekend Plan Model
  */
+let weekendPreviewColumnChecked = false;
+
 export class WeekendPlanModel {
   static create(familyId, weekStartDate, movies, outings, checklist, homeAlternative) {
+    this.ensurePreviewColumn();
     const db = getDatabase();
     const stmt = db.prepare(`
       INSERT INTO weekend_plans (family_id, week_start_date, movies, outings, checklist, home_alternative)
@@ -237,6 +489,7 @@ export class WeekendPlanModel {
   }
 
   static getByWeek(familyId, weekStartDate) {
+    this.ensurePreviewColumn();
     const db = getDatabase();
     return db.prepare(`
       SELECT * FROM weekend_plans
@@ -245,6 +498,7 @@ export class WeekendPlanModel {
   }
 
   static markAsSent(id) {
+    this.ensurePreviewColumn();
     const db = getDatabase();
     const stmt = db.prepare(`
       UPDATE weekend_plans
@@ -252,6 +506,91 @@ export class WeekendPlanModel {
       WHERE id = ?
     `);
     return stmt.run(id);
+  }
+
+  static markPreviewSent(id) {
+    this.ensurePreviewColumn();
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      UPDATE weekend_plans
+      SET preview_sent = 1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+    return stmt.run(id);
+  }
+
+  static ensurePreviewColumn() {
+    if (weekendPreviewColumnChecked) return;
+    const db = getDatabase();
+    const columns = db.prepare('PRAGMA table_info(weekend_plans)').all();
+    const hasColumn = columns.some((column) => column.name === 'preview_sent');
+    if (!hasColumn) {
+      try {
+        db.exec('ALTER TABLE weekend_plans ADD COLUMN preview_sent INTEGER DEFAULT 0');
+      } catch (error) {
+        console.error('Failed to add preview_sent column:', error.message);
+      }
+    }
+    weekendPreviewColumnChecked = true;
+  }
+}
+
+export class ParentResourceLogModel {
+  static log(familyId, resourceType, title, metadata = {}) {
+    const db = getDatabase();
+    const stmt = db.prepare(
+      `INSERT INTO parent_resource_logs (family_id, resource_type, title, metadata)
+       VALUES (?, ?, ?, ?)`
+    );
+
+    return stmt.run(familyId, resourceType, title || null, JSON.stringify(metadata || {}));
+  }
+
+  static getLastSent(familyId, resourceType) {
+    const db = getDatabase();
+    const row = db
+      .prepare(
+        `SELECT * FROM parent_resource_logs
+         WHERE family_id = ? AND resource_type = ?
+         ORDER BY sent_at DESC
+         LIMIT 1`
+      )
+      .get(familyId, resourceType);
+
+    if (!row) return null;
+    try {
+      return { ...row, metadata: row.metadata ? JSON.parse(row.metadata) : {} };
+    } catch (error) {
+      console.error('Failed to parse parent resource metadata:', error);
+      return { ...row, metadata: {} };
+    }
+  }
+
+  static getRecent(familyId, resourceTypes = null, limit = 5) {
+    const db = getDatabase();
+    let query = `
+      SELECT * FROM parent_resource_logs
+      WHERE family_id = ?
+    `;
+    const params = [familyId];
+
+    if (Array.isArray(resourceTypes) && resourceTypes.length > 0) {
+      const placeholders = resourceTypes.map(() => '?').join(',');
+      query += ` AND resource_type IN (${placeholders})`;
+      params.push(...resourceTypes);
+    }
+
+    query += ' ORDER BY sent_at DESC LIMIT ?';
+    params.push(limit);
+
+    const rows = db.prepare(query).all(...params);
+    return rows.map((row) => {
+      try {
+        return { ...row, metadata: row.metadata ? JSON.parse(row.metadata) : {} };
+      } catch (error) {
+        return { ...row, metadata: {} };
+      }
+    });
   }
 }
 
@@ -367,6 +706,393 @@ export class ScheduledMessageModel {
   }
 }
 
+/**
+ * Unified Notification History Model
+ */
+export class NotificationHistoryModel {
+  static record({
+    familyId,
+    guardianId,
+    messageType,
+    content,
+    scheduledTime = null,
+    slotLabel = null,
+    metadata = null,
+    scheduledMessageId = null
+  }) {
+    const db = getDatabase();
+    const sequence = this.nextSequence(familyId, messageType);
+    const stmt = db.prepare(`
+      INSERT INTO notification_history (
+        family_id, guardian_id, message_type, sequence, status, content,
+        scheduled_message_id, scheduled_time, slot_label, metadata
+      )
+      VALUES (?, ?, ?, ?, 'scheduled', ?, ?, ?, ?, ?)
+    `);
+
+    const result = stmt.run(
+      familyId,
+      guardianId || null,
+      messageType,
+      sequence,
+      content || null,
+      scheduledMessageId || null,
+      scheduledTime || null,
+      slotLabel || null,
+      metadata ? JSON.stringify(metadata) : null
+    );
+
+    return result.lastInsertRowid;
+  }
+
+  static nextSequence(familyId, messageType) {
+    const db = getDatabase();
+    const row = db
+      .prepare(
+        `SELECT COALESCE(MAX(sequence), 0) + 1 AS nextSeq
+         FROM notification_history
+         WHERE family_id = ? AND message_type = ?`
+      )
+      .get(familyId, messageType);
+    return row?.nextSeq || 1;
+  }
+
+  static linkScheduled(historyId, scheduledMessageId) {
+    if (!historyId || !scheduledMessageId) return;
+    const db = getDatabase();
+    db.prepare(
+      `UPDATE notification_history
+       SET scheduled_message_id = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`
+    ).run(scheduledMessageId, historyId);
+  }
+
+  static markSentByScheduledId(scheduledMessageId) {
+    if (!scheduledMessageId) return;
+    const db = getDatabase();
+    db.prepare(
+      `UPDATE notification_history
+       SET status = 'sent', sent_at = CURRENT_TIMESTAMP
+       WHERE scheduled_message_id = ?`
+    ).run(scheduledMessageId);
+  }
+
+  static getStats(familyId) {
+    const db = getDatabase();
+    const totalRow = db
+      .prepare(
+        `SELECT COUNT(*) as total
+         FROM notification_history
+         WHERE family_id = ?`
+      )
+      .get(familyId);
+
+    const byTypeRows = db
+      .prepare(
+        `SELECT message_type, COUNT(*) as count, MAX(sent_at) as last_sent
+         FROM notification_history
+         WHERE family_id = ?
+         GROUP BY message_type`
+      )
+      .all(familyId);
+
+    const typeCounts = {};
+    byTypeRows.forEach(row => {
+      typeCounts[row.message_type] = {
+        count: row.count,
+        lastSent: row.last_sent
+      };
+    });
+
+    return { total: totalRow?.total || 0, typeCounts };
+  }
+
+  static getRecentDigest(familyId, limit = 12) {
+    const db = getDatabase();
+    const rows = db
+      .prepare(
+        `SELECT message_type, sequence, status, content,
+                COALESCE(sent_at, scheduled_time, created_at) as ts
+         FROM notification_history
+         WHERE family_id = ?
+         ORDER BY created_at DESC
+         LIMIT ?`
+      )
+      .all(familyId, limit);
+
+    return rows.map(row => ({
+      message_type: row.message_type,
+      sequence: row.sequence,
+      status: row.status,
+      ts: row.ts ? format(new Date(row.ts), 'yyyy-MM-dd HH:mm') : null,
+      snippet: this.truncateText(row.content)
+    }));
+  }
+
+  static getSnapshot(familyId, limit = 12) {
+    return {
+      digest: this.getRecentDigest(familyId, limit),
+      stats: this.getStats(familyId)
+    };
+  }
+
+  static truncateText(text, max = 140) {
+    if (!text) return '';
+    const clean = `${text}`.replace(/\s+/g, ' ').trim();
+    if (clean.length <= max) return clean;
+    return `${clean.slice(0, max)}…`;
+  }
+}
+
+/**
+ * Child Audio Story Model
+ */
+export class ChildAudioStoryModel {
+  static create({
+    childId,
+    familyId,
+    storyTitle,
+    storySummary = null,
+    storyText,
+    durationSeconds = null,
+    voiceId = null,
+    modelId = null,
+    generatedFor
+  }) {
+    const db = getDatabase();
+
+    const storyHash = createHash('sha256').update(storyText).digest('hex');
+
+    const stmt = db.prepare(`
+      INSERT INTO child_audio_stories (
+        child_id, family_id, story_title, story_summary, story_text,
+        story_hash, duration_seconds, voice_id, model_id, generated_for
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const result = stmt.run(
+      childId,
+      familyId,
+      storyTitle,
+      storySummary,
+      storyText,
+      storyHash,
+      durationSeconds,
+      voiceId,
+      modelId,
+      generatedFor
+    );
+
+    return result.lastInsertRowid;
+  }
+
+  static getByChildAndDate(childId, date) {
+    const db = getDatabase();
+    return db
+      .prepare(
+        `SELECT * FROM child_audio_stories WHERE child_id = ? AND generated_for = ?`
+      )
+      .get(childId, date);
+  }
+
+  static getRecent(childId, { limit = 5, sinceDate = null } = {}) {
+    const db = getDatabase();
+
+    if (sinceDate) {
+      return db
+        .prepare(
+          `SELECT *
+           FROM child_audio_stories
+           WHERE child_id = ? AND generated_for >= ?
+           ORDER BY generated_for DESC
+           LIMIT ?`
+        )
+        .all(childId, sinceDate, limit);
+    }
+
+    return db
+      .prepare(
+        `SELECT *
+         FROM child_audio_stories
+         WHERE child_id = ?
+         ORDER BY generated_for DESC
+         LIMIT ?`
+      )
+      .all(childId, limit);
+  }
+
+  static findByHash(childId, storyText) {
+    const db = getDatabase();
+    const storyHash = createHash('sha256').update(storyText).digest('hex');
+    return db
+      .prepare(
+        `SELECT * FROM child_audio_stories WHERE child_id = ? AND story_hash = ?`
+      )
+      .get(childId, storyHash);
+  }
+}
+
+/**
+ * Couple Feedback Model
+ */
+export class CoupleFeedbackModel {
+  static logEntry({
+    familyId,
+    guardianId,
+    partnerRole = null,
+    sentiment = 'neutral',
+    positivesText = '',
+    challengesText = '',
+    gratitudeText = '',
+    source = 'manual',
+    aiSummary = null,
+    followupNeeded = 0
+  }) {
+    if (!familyId || !guardianId) {
+      return null;
+    }
+
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      INSERT INTO couple_feedback_logs (
+        family_id, guardian_id, partner_role, sentiment,
+        positives_text, challenges_text, gratitude_text,
+        source, ai_summary, followup_needed
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const result = stmt.run(
+      familyId,
+      guardianId,
+      partnerRole,
+      sentiment,
+      positivesText || null,
+      challengesText || null,
+      gratitudeText || null,
+      source,
+      aiSummary || null,
+      followupNeeded ? 1 : 0
+    );
+
+    return result.lastInsertRowid;
+  }
+
+  static getRecentByFamily(familyId, limit = 8) {
+    if (!familyId) return [];
+    const db = getDatabase();
+    return db
+      .prepare(
+        `SELECT *
+         FROM couple_feedback_logs
+         WHERE family_id = ?
+         ORDER BY created_at DESC
+         LIMIT ?`
+      )
+      .all(familyId, limit);
+  }
+
+  static getRecentByGuardian(guardianId, limit = 6) {
+    if (!guardianId) return [];
+    const db = getDatabase();
+    return db
+      .prepare(
+        `SELECT *
+         FROM couple_feedback_logs
+         WHERE guardian_id = ?
+         ORDER BY created_at DESC
+         LIMIT ?`
+      )
+      .all(guardianId, limit);
+  }
+}
+
+/**
+ * Spiritual Routine Log Model
+ */
+export class SpiritualRoutineLogModel {
+  static wasScheduled(familyId, routineId, scheduledFor) {
+    const db = getDatabase();
+    return db
+      .prepare(
+        `SELECT id FROM spiritual_routine_logs WHERE family_id = ? AND routine_id = ? AND scheduled_for = ?`
+      )
+      .get(familyId, routineId, scheduledFor);
+  }
+
+  static logSchedule({ familyId, guardianId = null, routineId, scheduledFor, scheduledMessageId = null }) {
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      INSERT OR IGNORE INTO spiritual_routine_logs (family_id, guardian_id, routine_id, scheduled_for, scheduled_message_id)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(familyId, guardianId, routineId, scheduledFor, scheduledMessageId);
+    return result.lastInsertRowid;
+  }
+
+  static markDeliveredByScheduledMessage(scheduledMessageId) {
+    if (!scheduledMessageId) return;
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      UPDATE spiritual_routine_logs
+      SET delivered = 1, delivered_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE scheduled_message_id = ?
+    `);
+    stmt.run(scheduledMessageId);
+  }
+
+  static getRecentForFamily(familyId, limit = 20) {
+    const db = getDatabase();
+    return db
+      .prepare(
+        `SELECT *
+         FROM spiritual_routine_logs
+         WHERE family_id = ?
+         ORDER BY scheduled_for DESC, created_at DESC
+         LIMIT ?`
+      )
+      .all(familyId, limit);
+  }
+}
+
+/**
+ * Spiritual Custom Request Model
+ */
+export class SpiritualCustomRequestModel {
+  static create({ familyId, guardianId, childId = null, requestText, aiResponse = null, audioUrl = null }) {
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      INSERT INTO spiritual_custom_requests (family_id, guardian_id, child_id, request_text, ai_response, audio_url)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(familyId, guardianId, childId, requestText, aiResponse, audioUrl);
+    return result.lastInsertRowid;
+  }
+
+  static updateResponse(id, aiResponse, audioUrl = null) {
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      UPDATE spiritual_custom_requests
+      SET ai_response = ?, audio_url = ?, created_at = created_at
+      WHERE id = ?
+    `);
+    stmt.run(aiResponse, audioUrl, id);
+  }
+
+  static getRecentByGuardian(guardianId, limit = 10) {
+    const db = getDatabase();
+    return db
+      .prepare(
+        `SELECT *
+         FROM spiritual_custom_requests
+         WHERE guardian_id = ?
+         ORDER BY created_at DESC
+         LIMIT ?`
+      )
+      .all(guardianId, limit);
+  }
+}
+
 export default {
   FamilyModel,
   GuardianModel,
@@ -375,5 +1101,9 @@ export default {
   AIProfileModel,
   WeekendPlanModel,
   DailyTrackingModel,
-  ScheduledMessageModel
+  ScheduledMessageModel,
+  ChildAudioStoryModel,
+  CoupleFeedbackModel,
+  SpiritualRoutineLogModel,
+  SpiritualCustomRequestModel
 };
