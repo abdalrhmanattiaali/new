@@ -8,7 +8,8 @@ import {
   GuardianModel,
   ChildModel,
   DailyTrackingModel,
-  InteractionModel
+  InteractionModel,
+  CoupleFeedbackModel
 } from '../database/models.js';
 import { LLMService } from '../ai/llm.js';
 import { format, startOfWeek, endOfWeek, subDays } from 'date-fns';
@@ -98,6 +99,7 @@ export class WeeklyReportService {
     const improvements = this.calculateImprovements(trackingData, weeklySummary);
 
     return {
+      familyId: family.id,
       childName: child.name,
       childAge: this.calculateAge(child.birth_date),
       weekStart,
@@ -202,6 +204,8 @@ export class WeeklyReportService {
       childName: reportData.childName,
       childAge: reportData.childAge,
       timeOfDay: 'الصباح',
+      familyId: reportData.familyId,
+      relationshipInsights: this.getRelationshipInsights(reportData.familyId),
       additionalContext: JSON.stringify({
         achievements: reportData.achievements,
         improvements: reportData.improvements,
@@ -303,6 +307,14 @@ ${aiSummary}
    */
   sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  getRelationshipInsights(familyId) {
+    if (!familyId) return [];
+    return CoupleFeedbackModel.getRecentByFamily(
+      familyId,
+      this.config.couple_feedback?.history_window || 6
+    );
   }
 }
 

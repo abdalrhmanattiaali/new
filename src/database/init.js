@@ -49,6 +49,20 @@ export function initDatabase() {
     }
   }
 
+  // Ensure newly added columns exist for older databases
+  try {
+    const guardianColumns = db.prepare("PRAGMA table_info(guardians)").all();
+    const hasPreferredTime = guardianColumns.some((col) => col.name === 'preferred_time');
+
+    if (!hasPreferredTime) {
+      db.exec("ALTER TABLE guardians ADD COLUMN preferred_time TEXT DEFAULT 'morning'");
+      console.log("🔧 Added missing column 'preferred_time' to guardians table");
+    }
+  } catch (error) {
+    console.error('❌ Error applying schema compatibility fixes:', error.message);
+    throw error;
+  }
+
   console.log('\n📊 Creating indexes...');
 
   // Create all indexes
