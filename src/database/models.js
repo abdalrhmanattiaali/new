@@ -21,6 +21,17 @@ export class FamilyModel {
     return result.lastInsertRowid;
   }
 
+  static updateSendPreference(id, sendToGroup = true, familyGroupId = null) {
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      UPDATE families
+      SET send_to_group = ?, family_group_id = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+    stmt.run(sendToGroup ? 1 : 0, familyGroupId || null, id);
+    return this.getById(id);
+  }
+
   static getById(id) {
     const db = getDatabase();
     return db.prepare('SELECT * FROM families WHERE id = ?').get(id);

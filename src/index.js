@@ -22,6 +22,7 @@ import { Scheduler } from './schedulers/scheduler.js';
 import { GroupSyncService } from './services/groupSyncService.js';
 import { getConfigLoader } from './utils/configLoader.js';
 import { initDatabase } from './database/init.js';
+import { HttpTriggerServer } from './server/httpTriggerServer.js';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -35,6 +36,7 @@ class FamilyAssistant {
     this.messageHandler = null;
     this.scheduler = null;
     this.groupSync = null;
+    this.httpTrigger = null;
   }
 
   /**
@@ -103,6 +105,10 @@ class FamilyAssistant {
       console.log('\n⏰ Initializing scheduler...');
       this.scheduler = new Scheduler(this.bot, this.config);
       this.scheduler.initialize();
+
+      // Start lightweight HTTP trigger server (for manual/demo requests)
+      this.httpTrigger = new HttpTriggerServer(this.config);
+      this.httpTrigger.start();
 
       console.log('\n✅ Family Assistant is ready!');
       console.log('📱 Waiting for messages...\n');
@@ -186,6 +192,11 @@ class FamilyAssistant {
         // Stop config watcher
         if (this.configLoader) {
           this.configLoader.stopWatching();
+        }
+
+        // Stop HTTP trigger server
+        if (this.httpTrigger?.server) {
+          this.httpTrigger.server.close();
         }
 
         // Destroy bot

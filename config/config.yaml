@@ -535,6 +535,14 @@ interactive_notifications:
     - "parent_support"
   tone: "empathetic"
 
+# خادم الربط اليدوي لإطلاق إشعارات تجريبية عبر المتصفح
+http_trigger:
+  enabled: true
+  port: 8080
+  default_number: "01122509222"
+  weekly_path: "/trigger/weekly-demo"
+  note: "يمكن تعطيله في البيئات الإنتاجية إذا لم نحتج إلى زر إرسال يدوي"
+
 # الاحتفالات الدورية
 celebrations:
   birthdays:
