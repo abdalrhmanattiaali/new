@@ -1,0 +1,30 @@
+{
+  "allowed_patterns": [
+    "daily_*",
+    "father_*",
+    "mother_*",
+    "family_*",
+    "child_*",
+    "spiritual_routine*",
+    "audio_story*",
+    "weather_*",
+    "weekend_*",
+    "weekly_*",
+    "monthly_*",
+    "birthday_*",
+    "anniversary_*",
+    "celebration_*",
+    "issue_*",
+    "interactive_notification*",
+    "parent_book",
+    "parent_course",
+    "parent_video",
+    "parent_resource*",
+    "couple_feedback*",
+    "motivational_*",
+    "goal_*",
+    "journey_*",
+    "development_*",
+    "guardian_presence*"
+  ]
+}

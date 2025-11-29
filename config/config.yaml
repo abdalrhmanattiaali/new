@@ -25,6 +25,9 @@ groups:
 weather:
   enabled: true
   provider: "openweather"  # openweather or estimation
+  send_times:
+    - "07:45"   # تنبيه صباحي مع نصائح الملابس
+    - "18:15"   # تحديث مسائي للتحضير لليوم التالي أو الخروج بعد العصر
   update_interval_minutes: 30
   include_in_messages: true
   show_for_activities:
@@ -143,6 +146,197 @@ tracks:
     - checklist
     - quick_tip
 
+# نظام الإشعارات الموحد
+notifications:
+  per_hour_limit: 1
+  manifest: "./config/notification_manifest.json"
+  timeline:
+    weekday:
+      - id: daily_0630_morning_blessing
+        time: "06:30"
+      - id: daily_0700_morning_adhkar
+        time: "07:00"
+      - id: daily_0800_father_lesson
+        time: "08:00"
+      - id: daily_0900_child_activity_one
+        time: "09:00"
+      - id: daily_1000_mother_break
+        time: "10:00"
+      - id: daily_1100_micro_learning
+        time: "11:00"
+      - id: daily_1200_lunch_dua
+        time: "12:00"
+      - id: daily_1300_father_midday
+        time: "13:00"
+      - id: daily_1400_mother_selfcare
+        time: "14:00"
+      - id: daily_1500_family_pause
+        time: "15:00"
+      - id: daily_1600_child_activity_two
+        time: "16:00"
+      - id: daily_1700_playtime
+        time: "17:00"
+      - id: daily_1800_maghrib_call
+        time: "18:00"
+      - id: daily_1900_dinner_routine
+        time: "19:00"
+      - id: daily_2000_family_activity
+        time: "20:00"
+      - id: daily_2100_bedtime_prep
+        time: "21:00"
+      - id: daily_2145_sleep_dua
+        time: "22:00"
+    thursday:
+      - id: thursday_0800_review_start
+        time: "08:00"
+      - id: thursday_0900_quiz
+        time: "09:00"
+      - id: thursday_1000_progress
+        time: "10:00"
+      - id: thursday_1100_application_review
+        time: "11:00"
+      - id: thursday_1200_story_share
+        time: "12:00"
+      - id: thursday_1300_certificate
+        time: "13:00"
+      - id: thursday_1500_look_ahead
+        time: "15:00"
+      - id: thursday_1700_resources
+        time: "17:00"
+      - id: thursday_1900_review_video
+        time: "19:00"
+      - id: thursday_2000_completion_reward
+        time: "20:00"
+      - id: thursday_2100_reflection
+        time: "21:00"
+      - id: thursday_2200_closing
+        time: "22:00"
+    friday:
+      - id: friday_0530_pre_fajr
+        time: "05:30"
+      - id: friday_0600_post_fajr
+        time: "06:00"
+      - id: friday_0730_ritual_prep
+        time: "07:30"
+      - id: friday_0800_father_ready
+        time: "08:00"
+      - id: friday_0900_family_reading
+        time: "09:00"
+      - id: friday_1000_story_time
+        time: "10:00"
+      - id: friday_1130_home_prep
+        time: "11:30"
+      - id: friday_1200_departure
+        time: "12:00"
+      - id: friday_1230_dua_window
+        time: "13:00"
+      - id: friday_1600_family_activity
+        time: "16:00"
+      - id: friday_1900_special_dinner
+        time: "19:00"
+      - id: friday_2000_family_circle
+        time: "20:00"
+      - id: friday_2130_special_bath
+        time: "21:30"
+      - id: friday_2230_week_reflection
+        time: "22:30"
+
+  types:
+    reminders: true
+    daily_messages: true
+    weekly_reports: true
+    urgent_only: false
+
+  smart_timing:
+    enabled: true
+    learn_from_interactions: true
+    avoid_busy_times: true
+
+# القصص الصوتية اليومية قبل النوم
+audio_stories:
+  enabled: true
+  send_time: "22:00"        # التوقيت المحلي لإرسال القصة
+  voice_id: "anouj"         # صوت عربي دافئ (يمكن تغييره من الإعدادات أو متغير البيئة)
+  model_id: "eleven_monolingual_v3" # نموذج Eleven v3 (alpha)
+  stability: 0.25            # درجة الاستقرار (0-1)
+  similarity: 0.8            # درجة التقارب مع الصوت الأصلي (0-1)
+  style: "Creative"          # نمط الإلقاء الافتراضي
+  min_gap_days: 1            # عدد الأيام الدنيا قبل إعادة استخدام نفس الفكرة
+  history_days: 14           # عدد الأيام السابقة التي يؤخذ تاريخ القصص منها لتجنب التكرار
+
+# الروتين الروحاني اليومي
+spiritual_routines:
+  enabled: true
+  schedule_seed_time: "06:10"   # وقت تشغيل عملية الجدولة اليومية
+  voice_id: "anouj"             # نفس صوت القصص الصوتية الافتراضي
+  model_id: "eleven_monolingual_v3"
+  stability: 0.2
+  similarity: 0.82
+  style: "Calm"
+  ai:
+    enabled: true
+    tone: "warm_spiritual"
+    max_custom_history: 20
+  routines:
+    morning_dua:
+      time: "06:45"
+    feeding_dua:
+      time: "11:15"
+    sleep_dua:
+      time: "20:45"
+    daily_ruqyah:
+      time: "09:30"
+    fajr_routine:
+      time: "06:50"
+    adhan_moment:
+      time: "12:55"
+    duha_blessing:
+      time: "09:15"
+    maghrib_hour:
+      time: "17:30"
+    sahabi_story:
+      time: "13:30"
+    family_challenge:
+      time: "09:00"
+      day_of_week: 6          # السبت
+    spiritual_pause:
+      time: "15:00"
+    reflective_question:
+      time: "21:15"
+    friday_blessing:
+      time: "09:30"
+      day_of_week: 5          # الجمعة
+    ramadan_preview:
+      time: "12:00"
+      day_of_month: 20
+    dhikr_song:
+      time: "17:00"
+      day_of_week: 1          # الاثنين
+    dua_speed_challenge:
+      time: "18:15"
+      day_of_week: 3          # الأربعاء
+    dua_tree_activity:
+      time: "10:00"
+      day_of_week: 0          # الأحد
+    dad_voice_message:
+      time: "21:30"
+      day_of_week: 4          # الخميس
+    weekly_dua_calendar:
+      time: "08:30"
+      day_of_week: 0          # الأحد
+    surprise_message:
+      time: "19:15"
+      day_of_month: 25
+    grand_challenge:
+      time: "20:00"
+      day_of_month: 1
+    knowledge_library:
+      time: "11:00"
+      day_of_month: 5
+    golden_advice:
+      time: "20:30"
+      day_of_week: 2          # الثلاثاء
+
 # مسار تعلم الوالدين
 parents_learning:
   enabled: true
@@ -164,12 +358,19 @@ parents_learning:
   # خيارات التفاعل
   interaction_buttons:
     - "نص سريع"
-    - "صوت 30ث"
     - "احفظ للويكند"
 
 # تخطيط نهاية الأسبوع
 weekend:
   enabled: true
+  include_issue_summary: true
+  generate:
+    day: "Tue"   # الثلاثاء
+    time: "18:00"
+  preview:
+    enabled: true
+    day: "Wed"
+    time: "12:30"
   send:
     day: "Thu"  # الخميس
     time: "18:30"
@@ -219,6 +420,141 @@ weekend:
       - "طبخ مشترك"
       - "قراءة قصص"
 
+# ترشيحات الكتب والدورات للوالدين
+parent_resources:
+  enabled: true
+  books:
+    check_time: "09:15"  # يتم التحقق يومياً في هذا الوقت
+    min_gap_days: 14
+    max_gap_days: 21
+    topics:
+      - "تربية الرضع"
+      - "تنظيم وقت العائلة"
+      - "الصحة النفسية للوالدين"
+    buttons:
+      - "أضف للقائمة ✅"
+      - "ذكرني لاحقاً ⏰"
+  courses:
+    day: "Sun"
+    time: "21:00"
+    min_gap_days: 7
+    topics:
+      father:
+        - "قيادة أسرية"
+        - "تنمية مهارات الأبوة"
+      mother:
+        - "توازن الأم العاملة"
+        - "عافية نفسية"
+      shared:
+        - "تواصل زوجي"
+        - "ذكاء عاطفي"
+  videos:
+    enabled: true
+    time: "19:45"           # توصيات فيديو خفيفة قبل نهاية اليوم
+    min_gap_days: 3
+    max_gap_days: 5
+    allowed_domains:
+      - "youtube.com"
+      - "youtu.be"
+      - "facebook.com"
+      - "fb.watch"
+    fallback_links:
+      - "https://www.youtube.com/watch?v=ah4bUxlN-6M"
+      - "https://www.youtube.com/watch?v=EPsyG2fAukM"
+    buttons:
+      - "شاهده الآن ▶️"
+      - "أرسله للشريك 🤝"
+      - "ذكرني لاحقاً ⏰"
+  education_hub:
+    enabled: true
+    check_time: "20:30"      # فحص مسار التعلم المتكامل مساءً
+    min_gap_days: 4
+    max_gap_days: 6
+    allowed_domains:
+      - "youtube.com"
+      - "youtu.be"
+      - "facebook.com"
+      - "fb.watch"
+      - "who.int"
+      - "unicef.org"
+    categories:
+      - "نصائح طبيب أطفال موثوقة"
+      - "تنمية بشرية وعقلية للوالدين"
+      - "تمارين ذهنية/عقلية قصيرة"
+      - "تأملات واسترخاء منزلي"
+    fallback_links:
+      - "https://www.youtube.com/watch?v=EPsyG2fAukM"
+      - "https://www.youtube.com/watch?v=5w4rUrwRj8s"
+    buttons:
+      - "احفظ الموارد 📌"
+      - "أرسلها للشريك 🤝"
+      - "أريد بدائل أخرى 🔄"
+
+# محادثات العلاقة الزوجية ومتابعة الشكاوى الإيجابية/السلبية
+couple_feedback:
+  enabled: true
+  history_window: 8           # كم إدخال سابق يظهر في السياق
+  prompts:
+    - id: midweek_checkin
+      day: wed               # مساء الأربعاء لفتح مساحة حديث صريح
+      time: "21:15"
+      focus: checkin
+    - id: friday_gratitude
+      day: fri               # قبل الويكند لتبادل الامتنان
+      time: "11:30"
+      focus: gratitude
+  buttons:
+    - "إيجابيات اليوم 🌟"
+    - "احتاج أفضفض 📝"
+    - "أشارك لاحقاً ⏰"
+
+# نظام الأسئلة الاستنباطية (يقررها الذكاء الاصطناعي)
+inference_questions:
+  enabled: true
+  cron_time: "08:40"          # صيغة HH:MM لتحديد وقت السؤال الصباحي
+  cooldown_hours: 12          # لا نكرر نفس النمط خلال 12 ساعة
+  topics:
+    - "child_check"
+    - "couple_alignment"
+    - "day_planning"
+  buttons:
+    - "تم ✅"
+    - "ذكّرني لاحقاً ⏰"
+    - "بدّل التوقيت 🔄"
+    - "تخطي ⏭️"
+
+# الإشعارات التفاعلية (يقررها الذكاء الاصطناعي)
+interactive_notifications:
+  enabled: true
+  cron: "15 * * * *"        # تفحص كل ساعة عند الدقيقة 15
+  max_per_day: 3             # حد أقصى لكل عائلة خلال 24 ساعة
+  min_gap_minutes: 90        # أقل فترة بين إشعارين تفاعليين للعائلة
+  topics:
+    - "child_issue"
+    - "couple_care"
+    - "parent_support"
+  tone: "empathetic"
+
+# الاحتفالات الدورية
+celebrations:
+  birthdays:
+    enabled: true
+    check_time: "06:00"
+    advance_days: 2
+    friendly_closing: "🎁 فكرة لطيفة: حضّروا بطاقة أو رسالة مكتوبة ووصلوها لصاحب العيد اليوم."
+  marriage:
+    enabled: true
+    advance_days: 5
+  child_monthly:
+    enabled: true
+    check_time: "07:05"
+  weekly_checkpoint:
+    enabled: true
+    day: "Thu"
+    time: "20:30"
+    include_issue_snapshot: true
+    include_next_stage: true
+
 # التذكيرات الذكية
 reminders:
   # تذكيرات التطعيمات
@@ -257,7 +593,6 @@ ui:
     - "تم ✅"
     - "ذكّرني لاحقاً ⏰"
     - "بدّل التوقيت 🔄"
-    - "أرسل صوت 30ث 🎤"
     - "تخطي ⏭️"
 
   # أزرار التتبع السريع
@@ -381,21 +716,6 @@ reports:
     enabled: false
     send_day: 1
     send_time: "10:00"
-
-# الإشعارات
-notifications:
-  # أنواع الإشعارات
-  types:
-    reminders: true
-    daily_messages: true
-    weekly_reports: true
-    urgent_only: false
-
-  # توقيت الإشعارات
-  smart_timing:
-    enabled: true
-    learn_from_interactions: true
-    avoid_busy_times: true
 
 # الأخطاء والسجلات
 logging:

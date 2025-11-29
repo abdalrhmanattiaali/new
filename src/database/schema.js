@@ -31,10 +31,24 @@ export const schema = {
       phone_number TEXT, -- encrypted (optional when onboarding from group)
       birth_date DATE, -- تاريخ الميلاد
       age INTEGER, -- العمر
+      preferred_time TEXT DEFAULT 'morning', -- الوقت المفضل لاستقبال الرسائل
       notification_enabled INTEGER DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE
+    )
+  `,
+
+  // سجل حالة تواجد الأولياء (داخل/خارج المنزل)
+  guardian_presence_logs: `
+    CREATE TABLE IF NOT EXISTS guardian_presence_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      guardian_id INTEGER NOT NULL,
+      status TEXT NOT NULL, -- 'home' | 'away'
+      notes TEXT,
+      source TEXT DEFAULT 'manual',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (guardian_id) REFERENCES guardians(id) ON DELETE CASCADE
     )
   `,
 
@@ -152,9 +166,24 @@ export const schema = {
       checklist TEXT, -- JSON array of checklist items
       home_alternative TEXT, -- JSON object
       sent INTEGER DEFAULT 0,
+      preview_sent INTEGER DEFAULT 0,
       feedback TEXT, -- JSON: which were selected/done
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE
+    )
+  `,
+
+  // سجل ترشيحات الموارد للوالدين
+  parent_resource_logs: `
+    CREATE TABLE IF NOT EXISTS parent_resource_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      family_id INTEGER NOT NULL,
+      resource_type TEXT NOT NULL, -- book, course_father, course_mother
+      title TEXT,
+      metadata TEXT, -- JSON
+      sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE
     )
   `,
@@ -251,6 +280,88 @@ export const schema = {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE,
       FOREIGN KEY (guardian_id) REFERENCES guardians(id) ON DELETE CASCADE
+    )
+  `,
+
+  // سجل موحد لجميع الإشعارات
+  notification_history: `
+    CREATE TABLE IF NOT EXISTS notification_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      family_id INTEGER NOT NULL,
+      guardian_id INTEGER,
+      message_type TEXT NOT NULL,
+      sequence INTEGER DEFAULT 1,
+      status TEXT DEFAULT 'scheduled',
+      content TEXT,
+      scheduled_message_id INTEGER,
+      scheduled_time DATETIME,
+      sent_at DATETIME,
+      slot_label TEXT,
+      metadata TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE,
+      FOREIGN KEY (guardian_id) REFERENCES guardians(id) ON DELETE SET NULL,
+      FOREIGN KEY (scheduled_message_id) REFERENCES scheduled_messages(id) ON DELETE SET NULL
+    )
+  `,
+
+  // جدول الأسئلة الاستنباطية (تعلم الآلة)
+  inference_questions: `
+    CREATE TABLE IF NOT EXISTS inference_questions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      family_id INTEGER NOT NULL,
+      guardian_id INTEGER,
+      topic TEXT,
+      question_text TEXT NOT NULL,
+      follow_up TEXT,
+      ai_payload TEXT,
+      status TEXT DEFAULT 'pending',
+      asked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      answered_at DATETIME,
+      answer_text TEXT,
+      metadata TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE,
+      FOREIGN KEY (guardian_id) REFERENCES guardians(id) ON DELETE SET NULL
+    )
+  `,
+
+  // جدول تتبع رسائل الروتين الروحاني
+  spiritual_routine_logs: `
+    CREATE TABLE IF NOT EXISTS spiritual_routine_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      family_id INTEGER NOT NULL,
+      guardian_id INTEGER,
+      routine_id TEXT NOT NULL,
+      scheduled_for DATE NOT NULL,
+      scheduled_message_id INTEGER,
+      delivered INTEGER DEFAULT 0,
+      delivered_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE,
+      FOREIGN KEY (guardian_id) REFERENCES guardians(id) ON DELETE SET NULL,
+      FOREIGN KEY (scheduled_message_id) REFERENCES scheduled_messages(id) ON DELETE SET NULL,
+      UNIQUE(family_id, routine_id, scheduled_for)
+    )
+  `,
+
+  // جدول الطلبات الروحانية المخصصة (ذكاء اصطناعي)
+  spiritual_custom_requests: `
+    CREATE TABLE IF NOT EXISTS spiritual_custom_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      family_id INTEGER NOT NULL,
+      guardian_id INTEGER NOT NULL,
+      child_id INTEGER,
+      request_text TEXT NOT NULL,
+      ai_response TEXT,
+      audio_url TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE,
+      FOREIGN KEY (guardian_id) REFERENCES guardians(id) ON DELETE CASCADE,
+      FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE SET NULL
     )
   `,
 
@@ -421,6 +532,92 @@ export const schema = {
       FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE,
       FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE
     )
+  `,
+
+  // جدول القصص الصوتية للأطفال
+  child_audio_stories: `
+    CREATE TABLE IF NOT EXISTS child_audio_stories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      child_id INTEGER NOT NULL,
+      family_id INTEGER NOT NULL,
+      story_title TEXT NOT NULL,
+      story_summary TEXT,
+      story_text TEXT NOT NULL,
+      story_hash TEXT NOT NULL,
+      duration_seconds INTEGER,
+      voice_id TEXT,
+      model_id TEXT,
+      generated_for DATE NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE,
+      FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE,
+      UNIQUE(child_id, generated_for)
+    )
+  `,
+
+  // جدول ملاحظات العلاقة الزوجية
+  couple_feedback_logs: `
+    CREATE TABLE IF NOT EXISTS couple_feedback_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      family_id INTEGER NOT NULL,
+      guardian_id INTEGER NOT NULL,
+      partner_role TEXT,
+      sentiment TEXT DEFAULT 'neutral', -- positive, challenge, mixed, neutral
+      positives_text TEXT,
+      challenges_text TEXT,
+      gratitude_text TEXT,
+      source TEXT DEFAULT 'manual',
+      ai_summary TEXT,
+      followup_needed INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE,
+      FOREIGN KEY (guardian_id) REFERENCES guardians(id) ON DELETE CASCADE
+    )
+  `,
+
+  // جلسات المحادثة التفاعلية
+  conversation_sessions: `
+    CREATE TABLE IF NOT EXISTS conversation_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      family_id INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      topic TEXT,
+      status TEXT DEFAULT 'open',
+      participants TEXT, -- JSON array of guardian ids
+      metadata TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE
+    )
+  `,
+
+  conversation_messages: `
+    CREATE TABLE IF NOT EXISTS conversation_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL,
+      author_type TEXT NOT NULL, -- guardian, assistant, system
+      guardian_id INTEGER,
+      message_content TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (session_id) REFERENCES conversation_sessions(id) ON DELETE CASCADE,
+      FOREIGN KEY (guardian_id) REFERENCES guardians(id) ON DELETE SET NULL
+    )
+  `,
+
+  interactive_notifications: `
+    CREATE TABLE IF NOT EXISTS interactive_notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      family_id INTEGER NOT NULL,
+      guardian_id INTEGER,
+      topic TEXT,
+      ai_reason TEXT,
+      message_text TEXT,
+      decision_payload TEXT,
+      sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE,
+      FOREIGN KEY (guardian_id) REFERENCES guardians(id) ON DELETE SET NULL
+    )
   `
 };
 
@@ -434,11 +631,18 @@ export const indexes = [
   'CREATE INDEX IF NOT EXISTS idx_interactions_family ON interactions(family_id)',
   'CREATE INDEX IF NOT EXISTS idx_interactions_guardian ON interactions(guardian_id)',
   'CREATE INDEX IF NOT EXISTS idx_weekend_family ON weekend_plans(family_id)',
+  'CREATE INDEX IF NOT EXISTS idx_weekend_week ON weekend_plans(week_start_date)',
+  'CREATE INDEX IF NOT EXISTS idx_resource_family_type ON parent_resource_logs(family_id, resource_type)',
   'CREATE INDEX IF NOT EXISTS idx_learning_guardian ON learning_track(guardian_id)',
   'CREATE INDEX IF NOT EXISTS idx_vaccines_child ON vaccines(child_id)',
   'CREATE INDEX IF NOT EXISTS idx_tracking_child ON daily_tracking(child_id)',
   'CREATE INDEX IF NOT EXISTS idx_tracking_date ON daily_tracking(tracking_date)',
   'CREATE INDEX IF NOT EXISTS idx_scheduled_time ON scheduled_messages(scheduled_time)',
+  'CREATE INDEX IF NOT EXISTS idx_notification_history_family ON notification_history(family_id)',
+  'CREATE INDEX IF NOT EXISTS idx_notification_history_type ON notification_history(message_type)',
+  'CREATE INDEX IF NOT EXISTS idx_notification_history_sent ON notification_history(sent_at)',
+  'CREATE INDEX IF NOT EXISTS idx_inference_family ON inference_questions(family_id)',
+  'CREATE INDEX IF NOT EXISTS idx_inference_status ON inference_questions(status)',
   'CREATE INDEX IF NOT EXISTS idx_content_category ON content_items(category)',
 
   // New indexes for journey features
@@ -465,5 +669,29 @@ export const indexes = [
   'CREATE INDEX IF NOT EXISTS idx_child_issues_family ON child_issues(family_id)',
   'CREATE INDEX IF NOT EXISTS idx_child_issues_status ON child_issues(status)',
   'CREATE INDEX IF NOT EXISTS idx_child_issues_type ON child_issues(issue_type)',
-  'CREATE INDEX IF NOT EXISTS idx_child_issues_next_followup ON child_issues(next_followup_date)'
+  'CREATE INDEX IF NOT EXISTS idx_child_issues_next_followup ON child_issues(next_followup_date)',
+
+  // New indexes for audio stories
+  'CREATE INDEX IF NOT EXISTS idx_audio_stories_child ON child_audio_stories(child_id)',
+  'CREATE INDEX IF NOT EXISTS idx_audio_stories_family ON child_audio_stories(family_id)',
+  'CREATE INDEX IF NOT EXISTS idx_audio_stories_date ON child_audio_stories(generated_for)',
+
+  // فهارس سجل العلاقة الزوجية
+  'CREATE INDEX IF NOT EXISTS idx_couple_feedback_family ON couple_feedback_logs(family_id)',
+  'CREATE INDEX IF NOT EXISTS idx_couple_feedback_guardian ON couple_feedback_logs(guardian_id)',
+  'CREATE INDEX IF NOT EXISTS idx_couple_feedback_sentiment ON couple_feedback_logs(sentiment)',
+
+  // فهارس الروتين الروحاني
+  'CREATE INDEX IF NOT EXISTS idx_spiritual_logs_family ON spiritual_routine_logs(family_id)',
+  'CREATE INDEX IF NOT EXISTS idx_spiritual_logs_routine ON spiritual_routine_logs(routine_id)',
+  'CREATE INDEX IF NOT EXISTS idx_spiritual_logs_date ON spiritual_routine_logs(scheduled_for)',
+  'CREATE INDEX IF NOT EXISTS idx_spiritual_requests_guardian ON spiritual_custom_requests(guardian_id)',
+  'CREATE INDEX IF NOT EXISTS idx_spiritual_requests_family ON spiritual_custom_requests(family_id)',
+
+  // فهارس المحادثات والإشعارات التفاعلية
+  'CREATE INDEX IF NOT EXISTS idx_conversations_family ON conversation_sessions(family_id)',
+  'CREATE INDEX IF NOT EXISTS idx_conversations_status ON conversation_sessions(status)',
+  'CREATE INDEX IF NOT EXISTS idx_conversation_messages_session ON conversation_messages(session_id)',
+  'CREATE INDEX IF NOT EXISTS idx_interactive_notifications_family ON interactive_notifications(family_id)',
+  'CREATE INDEX IF NOT EXISTS idx_interactive_notifications_sent_at ON interactive_notifications(sent_at)'
 ];
