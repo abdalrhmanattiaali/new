@@ -15,6 +15,35 @@ app:
     min_gap_minutes: 60
   hot_reload: true
 
+# لوحة التحكم الموحدة
+dashboard:
+  enabled: true
+  port: 8090
+  default_family_id: 1
+  default_guardian_id: null
+  ai_hint: "اقترح تعديلات التكوين أو القوالب بسرعة مع مراعاة سجل الإشعارات ونبرة الرسائل المتوازنة."
+  features:
+    - id: daily_bundle
+      title: "رسائل اليوم"
+      message_type: "dashboard_daily_preview"
+      description: "اختبار إرسال حزمة يومية مبسطة للتأكد من جاهزية القنوات."
+    - id: weekend_plan
+      title: "خطة نهاية الأسبوع"
+      message_type: "dashboard_weekend_preview"
+      description: "إرسال خطة مختصرة لعطلة الأسبوع للأسرة المحددة."
+    - id: learning_hub
+      title: "محتوى تعليمي للوالدين"
+      message_type: "dashboard_learning_snack"
+      description: "حزمة كتاب/دورة/فيديو قصيرة مع روابط موثوقة."
+    - id: ai_plus
+      title: "تنبيه AI+"
+      message_type: "dashboard_ai_plus"
+      description: "تنبيه تفاعلي يعتمد على أحدث السجلات والظروف."
+    - id: test_weather
+      title: "تحديث الطقس"
+      message_type: "dashboard_weather_ping"
+      description: "تذكير طقس سريع مع نصيحة ملابس."
+
 # إعدادات الجروبات العائلية
 groups:
   enabled: true

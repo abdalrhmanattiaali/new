@@ -25,6 +25,7 @@
     "goal_*",
     "journey_*",
     "development_*",
-    "guardian_presence*"
+    "guardian_presence*",
+    "dashboard_*"
   ]
 }
