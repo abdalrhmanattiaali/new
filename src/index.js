@@ -11,12 +11,19 @@ global.OPENAI_API_KEY = 'sk-PLACEHOLDER-REPLACE-WITH-YOUR-REAL-OPENAI-KEY';
 // احصل على API Key من: https://platform.openai.com/api-keys
 // ============================================
 
+// ⚠️ ElevenLabs TTS API Key (يمكن استبداله عبر متغير البيئة ELEVENLABS_API_KEY)
+global.ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || 'sk_7e36699784852bb2546986c2e70d006a29ff7ac3023e8689';
+// احصل على المفتاح من: https://elevenlabs.io
+// ============================================
+
 import { WhatsAppBot } from './bot/whatsapp.js';
 import { MessageHandler } from './handlers/messageHandler.js';
 import { Scheduler } from './schedulers/scheduler.js';
 import { GroupSyncService } from './services/groupSyncService.js';
 import { getConfigLoader } from './utils/configLoader.js';
 import { initDatabase } from './database/init.js';
+import { HttpTriggerServer } from './server/httpTriggerServer.js';
+import { DashboardServer } from './server/dashboardServer.js';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -30,6 +37,8 @@ class FamilyAssistant {
     this.messageHandler = null;
     this.scheduler = null;
     this.groupSync = null;
+    this.httpTrigger = null;
+    this.dashboardServer = null;
   }
 
   /**
@@ -98,6 +107,14 @@ class FamilyAssistant {
       console.log('\n⏰ Initializing scheduler...');
       this.scheduler = new Scheduler(this.bot, this.config);
       this.scheduler.initialize();
+
+      // Start lightweight HTTP trigger server (for manual/demo requests)
+      this.httpTrigger = new HttpTriggerServer(this.config);
+      this.httpTrigger.start();
+
+      // Start dashboard server
+      this.dashboardServer = new DashboardServer(this.config);
+      this.dashboardServer.start();
 
       console.log('\n✅ Family Assistant is ready!');
       console.log('📱 Waiting for messages...\n');
@@ -181,6 +198,16 @@ class FamilyAssistant {
         // Stop config watcher
         if (this.configLoader) {
           this.configLoader.stopWatching();
+        }
+
+        // Stop HTTP trigger server
+        if (this.httpTrigger?.server) {
+          this.httpTrigger.server.close();
+        }
+
+        // Stop dashboard server
+        if (this.dashboardServer?.server) {
+          this.dashboardServer.server.close();
         }
 
         // Destroy bot

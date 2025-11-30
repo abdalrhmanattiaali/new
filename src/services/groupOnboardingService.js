@@ -471,26 +471,29 @@ ${marriageMsg}
       }
 
       // 4. Create anniversary reminders
+      const birthdayAdvance = this.config?.celebrations?.birthdays?.advance_days ?? 2;
+      const marriageAdvance = this.config?.celebrations?.marriage?.advance_days ?? 3;
+
       const reminderStmt = db.prepare(`
         INSERT INTO anniversary_reminders (
-          family_id, guardian_id, reminder_type, anniversary_date, enabled
-        ) VALUES (?, ?, ?, ?, ?)
+          family_id, guardian_id, reminder_type, anniversary_date, reminder_days_before, enabled
+        ) VALUES (?, ?, ?, ?, ?, ?)
       `);
 
       // Father birthday
-      reminderStmt.run(familyId, fatherId, 'birthday_father', data.fatherBirthDate, 1);
+      reminderStmt.run(familyId, fatherId, 'birthday_father', data.fatherBirthDate, birthdayAdvance, 1);
 
       // Mother birthday
-      reminderStmt.run(familyId, motherId, 'birthday_mother', data.motherBirthDate, 1);
+      reminderStmt.run(familyId, motherId, 'birthday_mother', data.motherBirthDate, birthdayAdvance, 1);
 
       // Children birthdays
       for (let i = 0; i < childIds.length; i++) {
-        reminderStmt.run(familyId, null, 'birthday_child', data.children[i].birthDate, 1);
+        reminderStmt.run(familyId, null, 'birthday_child', data.children[i].birthDate, birthdayAdvance, 1);
       }
 
       // Marriage anniversary (if provided)
       if (data.marriageDate) {
-        reminderStmt.run(familyId, null, 'marriage_anniversary', data.marriageDate, 1);
+        reminderStmt.run(familyId, null, 'marriage_anniversary', data.marriageDate, marriageAdvance, 1);
       }
 
       db.prepare('COMMIT').run();
